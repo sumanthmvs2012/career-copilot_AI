@@ -36,7 +36,9 @@ export function listResumes() {
 
 // Resolves to null on success; 404 means the resume does not exist or is not yours.
 export function deleteResume(id) {
-  return withAuthHandling(() => (isMockResumeEnabled() ? mockDeleteResume(id) : del(`/resumes/${id}`)));
+  return withAuthHandling(() =>
+    isMockResumeEnabled() ? mockDeleteResume(id) : del(`/resumes/${id}`),
+  );
 }
 
 // Rejects with an ApiError; 404 means no profile yet, 400 a rejected file, 409 the 2-resume limit. A failed client-side

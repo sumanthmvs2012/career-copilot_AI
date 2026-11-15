@@ -15,6 +15,10 @@ const VARIANTS = {
   rejected: 'danger',
   declined: 'danger',
   failed: 'danger',
+  match: 'success',
+  partial: 'warning',
+  mismatch: 'danger',
+  unknown: 'neutral',
 };
 
 export default function StatusBadge({ status }) {

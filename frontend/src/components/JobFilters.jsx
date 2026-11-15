@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getJobFacets } from '../services/jobService';
 import { EMPTY_PLACE_FILTERS } from '../utils/jobFilters';
 import Button from './Button';
 import Select from './Select';
 
 const NO_FACETS = { categories: [], countries: [], states: [], cities: [] };
+const TEXT_DEBOUNCE_MS = 300;
+const PLACE_KEYS = ['category', 'country', 'state', 'city'];
 
 function toOptions(allLabel, facets, current) {
   const options = [
@@ -18,31 +20,85 @@ function toOptions(allLabel, facets, current) {
   return options;
 }
 
+const has = (list, selected) =>
+  list.some((entry) => (entry.value ?? '').toLowerCase() === selected.toLowerCase());
+
+// Drops selections that are no longer offered; a removed parent also clears its children.
+function pruneSelection(value, facets) {
+  const next = { ...value };
+  if (next.category && !has(facets.categories, next.category)) next.category = '';
+  if (next.country && !has(facets.countries, next.country)) next.country = '';
+  if (!next.country) {
+    next.state = '';
+    next.city = '';
+  }
+  if (next.state && !has(facets.states, next.state)) next.state = '';
+  if (next.city && !has(facets.cities, next.city)) next.city = '';
+  return next;
+}
+
+// Delays a changing text value; the first value is used immediately.
+function useDebounced(value, delay) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 // Category, country, state and city filters fed by /jobs/facets. value and the onChange argument
-// are {category, country, state, city}. Facet loading problems never block the job list.
+// are {category, country, state, city}. `others` carries the page's other active filters
+// (q, location, source, remoteType, postedWithin) so every facet list reflects all of them except
+// its own dimension. Facet loading problems never block the job list.
 export default function JobFilters({
   scope = 'scraped',
   value,
   onChange,
+  others = {},
   compact = false,
   showClear = true,
 }) {
   const { category, country, state, city } = value;
+  const { source = '', remoteType = '', postedWithin = '' } = others;
+  const q = useDebounced(others.q ?? '', TEXT_DEBOUNCE_MS);
+  const location = useDebounced(others.location ?? '', TEXT_DEBOUNCE_MS);
   const [facets, setFacets] = useState(NO_FACETS);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadCount, setReloadCount] = useState(0);
+  const latest = useRef({ value, onChange });
+  useEffect(() => {
+    latest.current = { value, onChange };
+  });
 
-  // Once per scope/country/state; a stale response is dropped.
+  // Refetch whenever any filter changes; a stale response is dropped.
   useEffect(() => {
     let current = true;
     setLoading(true);
     setFailed(false);
-    getJobFacets({ scope: scope || 'scraped', country, state })
+    getJobFacets({
+      scope: scope || 'scraped',
+      ...(q && { q }),
+      ...(location && { location }),
+      ...(source && { source }),
+      ...(remoteType && { remoteType }),
+      ...(postedWithin && { postedWithin }),
+      category,
+      country,
+      state,
+      city,
+    })
       .then((result) => {
         if (!current) return;
-        setFacets({ ...NO_FACETS, ...result });
+        const loaded = { ...NO_FACETS, ...result };
+        setFacets(loaded);
         setLoading(false);
+        const selected = latest.current.value;
+        const pruned = pruneSelection(selected, loaded);
+        if (PLACE_KEYS.some((key) => pruned[key] !== selected[key])) {
+          latest.current.onChange(pruned);
+        }
       })
       .catch((error) => {
         if (!current) return;
@@ -53,12 +109,36 @@ export default function JobFilters({
     return () => {
       current = false;
     };
-  }, [scope, country, state, reloadCount]);
+  }, [
+    scope,
+    q,
+    location,
+    source,
+    remoteType,
+    postedWithin,
+    category,
+    country,
+    state,
+    city,
+    reloadCount,
+  ]);
+
+  const stateDisabled = !country || facets.states.length === 0;
+  const cityDisabled = !country || facets.cities.length === 0;
+  let stateAll = 'All states';
+  if (!country) stateAll = 'Select a country first';
+  else if (stateDisabled) stateAll = 'No states available';
+  let cityAll = 'All cities';
+  if (!country) cityAll = 'Select a country first';
+  else if (cityDisabled) cityAll = 'No cities available';
 
   const hasFilters = Boolean(category || country || state || city);
 
   return (
-    <div className={compact ? 'job-filters job-filters--compact' : 'job-filters'} aria-busy={loading}>
+    <div
+      className={compact ? 'job-filters job-filters--compact' : 'job-filters'}
+      aria-busy={loading}
+    >
       <div className="job-filters__grid">
         <Select
           label="Category"
@@ -76,16 +156,16 @@ export default function JobFilters({
         />
         <Select
           label="State"
-          options={toOptions('All states', facets.states, state)}
+          options={toOptions(stateAll, facets.states, state)}
           value={state}
-          disabled={!country}
+          disabled={stateDisabled}
           onChange={(event) => onChange({ ...value, state: event.target.value, city: '' })}
         />
         <Select
           label="City"
-          options={toOptions('All cities', facets.cities, city)}
+          options={toOptions(cityAll, facets.cities, city)}
           value={city}
-          disabled={!country}
+          disabled={cityDisabled}
           onChange={(event) => onChange({ ...value, city: event.target.value })}
         />
       </div>

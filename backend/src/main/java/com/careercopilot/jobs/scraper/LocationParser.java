@@ -55,13 +55,53 @@ public final class LocationParser {
 
   private static final Set<String> NOISE_TOKENS =
       Set.of("na", "tbd", "tba", "none", "world", "emea", "apac", "latam", "americas", "europe",
-          "north america");
+          "north america", "location", "locations", "office", "offices", "various", "other", "multiple",
+          "global", "asia", "unknown", "headquarters", "hq");
   // Names that are both a state and a city: they are a state only after a city.
   private static final Set<String> AMBIGUOUS_STATES = Set.of("new york", "washington");
   private static final Set<String> CITY_STATES = Set.of("Singapore", "Hong Kong");
   private static final Set<String> CANADIAN_CITIES =
       Set.of("toronto", "vancouver", "montreal", "montr\u00e9al", "ottawa", "calgary", "edmonton",
           "waterloo", "winnipeg", "quebec city", "halifax", "kitchener", "mississauga");
+
+  // Abbreviations and spelling variants of cities, so one city is always stored under one name.
+  private static final Map<String, String> CITY_ALIASES = new HashMap<>();
+  // Cities that must never be read as the region of "City, Region, Country".
+  private static final Set<String> KNOWN_CITIES = new java.util.HashSet<>();
+
+  static {
+    alias("San Francisco", "sf", "san francisco", "san fransisco", "sf bay", "san francisco bay");
+    alias("New York", "nyc", "new york city", "ny city");
+    alias("Seattle", "sea");
+    alias("Bengaluru", "bengaluru", "bangalore", "blr");
+    String[] cities = {
+      "Atlanta", "Seattle", "Austin", "Boston", "Chicago", "Denver", "Dallas", "Houston", "Miami",
+      "Portland", "Los Angeles", "San Diego", "San Jose", "Phoenix", "Philadelphia", "Pittsburgh",
+      "Minneapolis", "Detroit", "Nashville", "Charlotte", "Raleigh", "Salt Lake City", "Las Vegas",
+      "Washington", "Brooklyn", "Oakland", "Palo Alto", "Mountain View", "Sunnyvale", "Menlo Park",
+      "Redwood City", "San Mateo", "Santa Clara", "Cupertino", "Bellevue", "Redmond", "Kirkland",
+      "Boulder", "Cambridge", "Berlin", "Munich", "Hamburg", "Frankfurt", "Cologne", "London",
+      "Manchester", "Edinburgh", "Dublin", "Paris", "Madrid", "Barcelona", "Amsterdam", "Lisbon",
+      "Warsaw", "Krakow", "Stockholm", "Copenhagen", "Oslo", "Helsinki", "Zurich", "Vienna",
+      "Brussels", "Rome", "Milan", "Tel Aviv", "Dubai", "Mumbai", "Delhi", "New Delhi", "Pune",
+      "Hyderabad", "Chennai", "Gurgaon", "Noida", "Tokyo", "Osaka", "Seoul", "Beijing", "Shanghai",
+      "Shenzhen", "Taipei", "Sydney", "Melbourne", "Brisbane", "Auckland", "Sao Paulo", "S\u00e3o Paulo",
+      "Buenos Aires", "Bogota", "Santiago", "Mexico City", "Lagos", "Nairobi", "Cairo", "Singapore",
+      "Hong Kong", "Jakarta", "Manila", "Bangkok", "Kuala Lumpur", "Istanbul", "Bucharest", "Prague"
+    };
+    for (String c : cities) {
+      KNOWN_CITIES.add(key(c));
+    }
+    KNOWN_CITIES.addAll(CANADIAN_CITIES);
+    KNOWN_CITIES.addAll(CITY_ALIASES.keySet());
+  }
+
+  private static void alias(String canonical, String... variants) {
+    for (String variant : variants) {
+      CITY_ALIASES.put(key(variant), canonical);
+    }
+    KNOWN_CITIES.add(key(canonical));
+  }
 
   private record StateInfo(String name, String country) {}
 
@@ -143,6 +183,23 @@ public final class LocationParser {
     country("Costa Rica", "costa rica");
     country("Estonia", "estonia");
     country("Greece", "greece");
+    country("Taiwan", "taiwan");
+    country("Peru", "peru");
+    country("Hungary", "hungary");
+    country("Bulgaria", "bulgaria");
+    country("Serbia", "serbia");
+    country("Croatia", "croatia");
+    country("Lithuania", "lithuania");
+    country("Latvia", "latvia");
+    country("Luxembourg", "luxembourg");
+    country("Morocco", "morocco");
+    country("Uruguay", "uruguay");
+    country("Bangladesh", "bangladesh");
+    country("Sri Lanka", "sri lanka");
+    country("Saudi Arabia", "saudi arabia");
+    country("Qatar", "qatar");
+    country("Ghana", "ghana");
+    country("Pakistan", "pakistan");
   }
 
   private LocationParser() {}
@@ -212,10 +269,19 @@ public final class LocationParser {
     if (state != null) {
       return new Tok(Kind.STATE, state.name(), null, state.country(), AMBIGUOUS_STATES.contains(key), null);
     }
+    String aliased = CITY_ALIASES.get(key);
+    if (aliased != null) {
+      return new Tok(Kind.PLACE, aliased, null, null, false, null);
+    }
     int dash = s.indexOf('-');
     if (dash > 0) {
       String prefix = key(s.substring(0, dash));
-      String prefixCountry = prefix.equals("ca") ? CANADA : COUNTRIES.get(prefix);
+      // "NYC-Privy": a known city before a dash is the city; whatever follows is an office name.
+      String prefixCity = CITY_ALIASES.get(prefix);
+      if (prefixCity != null) {
+        return new Tok(Kind.PLACE, prefixCity, null, null, false, null);
+      }
+      String prefixCountry = prefix.equals("ca") ? CANADA : prefix.equals("in") ? "India" : COUNTRIES.get(prefix);
       String rest = s.substring(dash + 1).trim();
       if (prefixCountry != null && !rest.isEmpty()) {
         return new Tok(Kind.PREFIX, null, null, prefixCountry, false, classify(rest));
@@ -226,6 +292,7 @@ public final class LocationParser {
     }
     return new Tok(Kind.PLACE, titleCase(s), null, null, false, null);
   }
+
 
   private static String clean(String raw) {
     String s = raw.trim().replaceAll("\\s+", " ");
@@ -318,7 +385,15 @@ public final class LocationParser {
 
   // "City, Region, Country": an unknown place between a bare city and a country is its region.
   // Known limitation: "Berlin, Munich, Germany" reads Munich as a region.
+  // Only outside the US and Canada (whose states are all known, so an unknown name there is a city),
+  // and never a known city name.
   private static boolean canTakeRegion(Row cur, List<Tok> toks, int i) {
+    if (i + 1 < toks.size()) {
+      String next = toks.get(i + 1).name();
+      if (US.equals(next) || CANADA.equals(next) || KNOWN_CITIES.contains(key(toks.get(i).name()))) {
+        return false;
+      }
+    }
     return cur != null
         && cur.city != null
         && cur.state == null

@@ -575,7 +575,15 @@
 }
 
 .job-item__match {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
   margin: 0;
+}
+
+.job-item__match > .match-result {
+  align-self: stretch;
 }
 
 .job-item__toggle {
@@ -809,4 +817,102 @@
   .job-filters--compact .job-filters__grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+
+.match-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.match-result__score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.match-result__number {
+  margin: 0;
+}
+
+.match-result__number strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.match-bar {
+  flex-basis: 100%;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--color-border-soft);
+  overflow: hidden;
+}
+
+.match-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--status-neutral);
+}
+
+.match-bar__fill--success {
+  background: var(--status-success);
+}
+
+.match-bar__fill--warning {
+  background: var(--status-warning);
+}
+
+.match-bar__fill--danger {
+  background: var(--status-danger);
+}
+
+.match-result__heading {
+  margin: 0 0 var(--space-2);
+  font-size: 1rem;
+}
+
+.match-result__section p,
+.match-result__list {
+  margin: 0;
+}
+
+.match-result__list {
+  padding-left: var(--space-6);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-chip {
+  padding: 0.125rem var(--space-3);
+  border-radius: 999px;
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral);
+  font-size: var(--font-size-sm);
+}
+
+.skill-chip--good {
+  background: var(--status-success-bg);
+  color: var(--status-success);
+}
+
+.skill-chip--bad {
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
+}
+
+.resume-skills__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.resume-skills {
+  margin: var(--space-2) 0 0;
 }

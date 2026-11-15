@@ -32,6 +32,9 @@ public class Resume {
     @Column(name = "parsed_text", columnDefinition = "TEXT")
     private String parsedText;
 
+    @Column(columnDefinition = "TEXT")
+    private String skills;
+
     @Column(name = "is_base", nullable = false)
     private boolean isBase;
 
@@ -100,6 +103,14 @@ public class Resume {
 
     public void setParsedText(String parsedText) {
         this.parsedText = parsedText;
+    }
+
+    public String getSkills() {
+        return skills;
+    }
+
+    public void setSkills(String skills) {
+        this.skills = skills;
     }
 
     public boolean isBase() {

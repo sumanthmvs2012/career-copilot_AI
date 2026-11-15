@@ -12,6 +12,13 @@ export function isMockResumeEnabled() {
   return import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_RESUMES === 'true';
 }
 
+// Skills the mock "extracts" from any uploaded file; also used by the jobs mock to build matches.
+export const MOCK_RESUME_SKILLS = ['Java', 'Spring Boot', 'SQL', 'React Native', 'Docker', 'Git'];
+
+export function hasMockResume() {
+  return storedResumes.length > 0;
+}
+
 export function resetMockResume() {
   storedResumes = [];
   nextId = 1;
@@ -48,6 +55,7 @@ export async function mockUploadResume(file) {
     isBase: true,
     baseResumeId: null,
     textLength: 1200,
+    skills: [...MOCK_RESUME_SKILLS],
     createdAt: new Date().toISOString(),
   };
   // The newest upload becomes the base.

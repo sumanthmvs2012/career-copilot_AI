@@ -44,6 +44,9 @@ public class Job {
     @Column(length = 50)
     private String category;
 
+    @Column(columnDefinition = "TEXT")
+    private String skills;
+
     @Column(name = "source_url", length = 1000)
     private String sourceUrl;
 
@@ -169,6 +172,14 @@ public class Job {
 
     public void setScrapedAt(Instant scrapedAt) {
         this.scrapedAt = scrapedAt;
+    }
+
+    public String getSkills() {
+        return skills;
+    }
+
+    public void setSkills(String skills) {
+        this.skills = skills;
     }
 
     public Instant getCreatedAt() {

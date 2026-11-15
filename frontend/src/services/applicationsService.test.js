@@ -72,8 +72,19 @@ describe('applicationsService (mock)', () => {
     for (const r of rows) {
       expect(Object.keys(r).sort()).toEqual(
         [
-          'appliedAt', 'company', 'coverLetter', 'createdAt', 'emailSent', 'emailSentAt', 'id',
-          'jobId', 'jobTitle', 'resumeId', 'status', 'submittedBy', 'updatedAt',
+          'appliedAt',
+          'company',
+          'coverLetter',
+          'createdAt',
+          'emailSent',
+          'emailSentAt',
+          'id',
+          'jobId',
+          'jobTitle',
+          'resumeId',
+          'status',
+          'submittedBy',
+          'updatedAt',
         ].sort(),
       );
     }

@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, upload } from './apiClient';
-import {
-  mockDeleteResume,
-  mockListResumes,
-  mockUploadResume,
-  resetMockResume,
-} from './mockResume';
+import { mockDeleteResume, mockListResumes, mockUploadResume, resetMockResume } from './mockResume';
 import { deleteResume, listResumes, uploadResume, validateResumeFile } from './resumeService';
 import { clearToken, getToken, setToken } from '../utils/authToken';
 
@@ -99,7 +94,10 @@ describe('resumeService', () => {
 
   it('keeps the 409 message from a third upload', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(409, { status: 409, message: 'You already have 2 resumes. Delete one to upload another.' }),
+      jsonResponse(409, {
+        status: 409,
+        message: 'You already have 2 resumes. Delete one to upload another.',
+      }),
     );
     const error = await uploadResume(makeFile('a.pdf')).catch((e) => e);
     expect(error.status).toBe(409);

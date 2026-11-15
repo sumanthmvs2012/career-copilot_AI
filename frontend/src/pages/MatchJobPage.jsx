@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import JobDetails from '../components/JobDetails';
 import TextArea from '../components/TextArea';
 import TextInput from '../components/TextInput';
-import { listJobs, matchJob } from '../services/jobService';
+import { listJobs, matchPastedJob } from '../services/jobService';
 import { MAX_JOB_DESCRIPTION_LENGTH, validateJobMatch } from '../utils/validation';
 
 const EMPTY_FORM = {
@@ -17,18 +17,20 @@ const EMPTY_FORM = {
   description: '',
 };
 
-// match is null today; when the AI module ships it becomes
-// {score, missingSkills, nearMatchedSkills, missingKeywords, suggestedHeadline, locationFit}
-// and is rendered here in place of the "not available" note.
+// match is the stored result (shown inline by JobDetails) or null with a message when the user
+// has no base resume yet.
 function ResultCard({ result }) {
   const { job, match, message } = result;
   return (
     <section className="card" aria-labelledby="result-heading">
       <h2 id="result-heading">Job saved</h2>
       <JobDetails job={{ ...job, match }} />
-      {!match && (
+      {match ? (
+        message && <Alert variant="success">{message}</Alert>
+      ) : (
         <Alert variant="warning">
-          {message || 'Matching is not available yet; your job is saved.'}
+          {message || 'Upload a resume to see your match.'}{' '}
+          <Link to="/resume">Go to your resumes</Link>
         </Alert>
       )}
     </section>
@@ -110,7 +112,7 @@ export default function MatchJobPage() {
     savingRef.current = true;
     setSaving(true);
     try {
-      const response = await matchJob(form);
+      const response = await matchPastedJob(form);
       setResult(response);
       setForm(EMPTY_FORM);
       setJobs((current) => [response.job, ...current]);

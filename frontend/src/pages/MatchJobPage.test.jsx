@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MatchJobPage from './MatchJobPage';
-import { listJobs, matchJob } from '../services/jobService';
+import { listJobs, matchPastedJob } from '../services/jobService';
 
-vi.mock('../services/jobService', () => ({ listJobs: vi.fn(), matchJob: vi.fn() }));
+vi.mock('../services/jobService', () => ({ listJobs: vi.fn(), matchPastedJob: vi.fn() }));
 
 function renderPage() {
   const user = userEvent.setup();
@@ -41,7 +41,20 @@ const SAVED = {
     createdAt: '2026-11-12T10:00:00Z',
   },
   match: null,
-  message: 'Matching is not available yet; your job is saved.',
+  message: 'Upload a resume to see your match.',
+};
+
+const MATCH = {
+  jobId: 5,
+  resumeId: 1,
+  score: 80,
+  matchedSkills: ['Java'],
+  missingSkills: [],
+  nearMatchedSkills: [],
+  missingKeywords: [],
+  suggestedHeadline: 'Backend Engineer',
+  locationFit: { status: 'match', note: 'Same city.' },
+  createdAt: '2026-11-15T10:00:00Z',
 };
 
 async function fillDescription(user, text = DESCRIPTION) {
@@ -51,7 +64,7 @@ async function fillDescription(user, text = DESCRIPTION) {
 describe('MatchJobPage', () => {
   beforeEach(() => {
     vi.mocked(listJobs).mockReset().mockResolvedValue([]);
-    vi.mocked(matchJob).mockReset();
+    vi.mocked(matchPastedJob).mockReset();
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -101,9 +114,7 @@ describe('MatchJobPage', () => {
     expect(within(list).getByText('Acme · Berlin · Hybrid')).toBeInTheDocument();
     expect(within(list).getByText('Pasted manually')).toBeInTheDocument();
     expect(within(list).getByText(/^Saved .+ ago$/)).toBeInTheDocument();
-    expect(
-      within(list).getByText('Match with your base resume: coming soon'),
-    ).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'Match with my resume' })).toBeInTheDocument();
   });
 
   it('lists only pasted jobs, never scraped ones', async () => {
@@ -141,13 +152,13 @@ describe('MatchJobPage', () => {
     const user = renderPage();
     await user.click(screen.getByRole('button', { name: 'Match this job' }));
     expect(screen.getByText('Job description is required.')).toBeInTheDocument();
-    expect(matchJob).not.toHaveBeenCalled();
+    expect(matchPastedJob).not.toHaveBeenCalled();
     await screen.findByText('You have not pasted any jobs yet.');
   });
 
   it('shows the saving state, then the result card with the not-available note', async () => {
     let resolveMatch;
-    vi.mocked(matchJob).mockReturnValue(new Promise((resolve) => (resolveMatch = resolve)));
+    vi.mocked(matchPastedJob).mockReturnValue(new Promise((resolve) => (resolveMatch = resolve)));
     const user = renderPage();
     await user.type(screen.getByLabelText('Job title (optional)'), 'Backend Engineer');
     await user.selectOptions(screen.getByLabelText('Remote type'), 'hybrid');
@@ -155,7 +166,7 @@ describe('MatchJobPage', () => {
     await user.click(screen.getByRole('button', { name: 'Match this job' }));
 
     expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled();
-    expect(matchJob).toHaveBeenCalledWith(
+    expect(matchPastedJob).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Backend Engineer',
         remoteType: 'hybrid',
@@ -167,17 +178,38 @@ describe('MatchJobPage', () => {
     const card = (await screen.findByRole('heading', { name: 'Job saved' })).closest('section');
     expect(within(card).getByText('Backend Engineer')).toBeInTheDocument();
     expect(within(card).getByText('Acme · Berlin · Hybrid')).toBeInTheDocument();
-    expect(
-      within(card).getByText('Matching is not available yet; your job is saved.'),
-    ).toBeInTheDocument();
-    expect(within(card).getByText('Match with your base resume: coming soon')).toBeInTheDocument();
+    expect(within(card).getByText(/Upload a resume to see your match\./)).toBeInTheDocument();
+    expect(within(card).getByRole('link', { name: 'Go to your resumes' })).toHaveAttribute(
+      'href',
+      '/resume',
+    );
     // The new job joins the list and the form is cleared for the next paste.
     expect(screen.getByRole('list')).toHaveTextContent('Backend Engineer');
     expect(screen.getByLabelText('Job description')).toHaveValue('');
   });
 
+  it('shows the match result returned with the saved job', async () => {
+    vi.mocked(matchPastedJob).mockResolvedValue({
+      ...SAVED,
+      match: MATCH,
+      message: 'Your job is saved and matched.',
+    });
+    const user = renderPage();
+    await fillDescription(user);
+    await user.click(screen.getByRole('button', { name: 'Match this job' }));
+
+    const card = (await screen.findByRole('heading', { name: 'Job saved' })).closest('section');
+    expect(within(card).getByText('out of 100')).toBeInTheDocument();
+    expect(within(card).getByText('Strong match')).toBeInTheDocument();
+    expect(within(card).getByText('Java')).toBeInTheDocument();
+    expect(within(card).getByText('Your job is saved and matched.')).toBeInTheDocument();
+    expect(
+      within(card).queryByRole('link', { name: 'Go to your resumes' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows field errors from a 400', async () => {
-    vi.mocked(matchJob).mockRejectedValue(
+    vi.mocked(matchPastedJob).mockRejectedValue(
       apiError(400, { status: 400, fieldErrors: { title: 'Title is too long.' } }),
     );
     const user = renderPage();
@@ -190,7 +222,7 @@ describe('MatchJobPage', () => {
   });
 
   it('points to the profile page on a 404', async () => {
-    vi.mocked(matchJob).mockRejectedValue(apiError(404));
+    vi.mocked(matchPastedJob).mockRejectedValue(apiError(404));
     const user = renderPage();
     await fillDescription(user);
     await user.click(screen.getByRole('button', { name: 'Match this job' }));
@@ -203,7 +235,7 @@ describe('MatchJobPage', () => {
   });
 
   it('shows a generic error on a server failure and never logs job text', async () => {
-    vi.mocked(matchJob).mockRejectedValue(apiError(500));
+    vi.mocked(matchPastedJob).mockRejectedValue(apiError(500));
     const user = renderPage();
     await fillDescription(user);
     await user.click(screen.getByRole('button', { name: 'Match this job' }));
@@ -213,7 +245,7 @@ describe('MatchJobPage', () => {
   });
 
   it('redirects to /login on a 401 while submitting', async () => {
-    vi.mocked(matchJob).mockRejectedValue(apiError(401));
+    vi.mocked(matchPastedJob).mockRejectedValue(apiError(401));
     const user = renderPage();
     await fillDescription(user);
     await user.click(screen.getByRole('button', { name: 'Match this job' }));

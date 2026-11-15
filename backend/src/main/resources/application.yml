@@ -51,3 +51,6 @@ app:
     cron: ${SCRAPER_CRON:0 0 * * * *}
     # Comma separated source:token pairs, for example greenhouse:stripe,lever:palantir
     boards: ${SCRAPER_BOARDS:}
+  locations:
+    # Re-derives job_locations from each stored free-text location at startup (idempotent, deletes no jobs).
+    reparse-on-startup: ${LOCATIONS_REPARSE_ON_STARTUP:true}

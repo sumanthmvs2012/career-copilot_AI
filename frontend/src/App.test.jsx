@@ -7,7 +7,7 @@ import { clearToken, setToken } from './utils/authToken';
 vi.mock('./services/jobService', () => ({
   listJobs: vi.fn(() => new Promise(() => {})),
   getJobFacets: vi.fn(() => new Promise(() => {})),
-  matchJob: vi.fn(),
+  matchPastedJob: vi.fn(),
 }));
 vi.mock('./services/profileService', () => ({
   getProfile: vi.fn(() => new Promise(() => {})),

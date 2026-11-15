@@ -16,3 +16,5 @@ app:
     # Tests never call the public job board APIs, even if backend/.env enables the scraper locally.
     enabled: false
     boards: ""
+  locations:
+    reparse-on-startup: false

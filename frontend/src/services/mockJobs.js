@@ -1,14 +1,17 @@
 import { ApiError } from './apiClient';
 import { getToken } from '../utils/authToken';
 import { hasMockProfile, isMockProfileEnabled } from './mockProfile';
+import { MOCK_RESUME_SKILLS, hasMockResume, isMockResumeEnabled } from './mockResume';
 
 // Temporary stand-in until the Spring Boot /jobs endpoints are wired up. State lives in memory
 // only, so a page reload resets it; that is fine for a dev-only mock.
 const MOCK_DELAY_MS = 400;
-const MATCH_UNAVAILABLE = 'Matching is not available yet; your job is saved.';
+const NO_RESUME_MESSAGE = 'Upload a resume to see your match.';
+const NO_RESUME_ERROR = 'Upload a resume first to see your match.';
 const DAY_MS = 24 * 60 * 60 * 1000;
 let storedJobs = [];
 let nextId = 1;
+const storedMatches = new Map();
 
 export function isMockJobsEnabled() {
   return import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_JOBS === 'true';
@@ -17,6 +20,7 @@ export function isMockJobsEnabled() {
 export function resetMockJobs() {
   storedJobs = [];
   nextId = 1;
+  storedMatches.clear();
 }
 
 async function delayAndAuthorize() {
@@ -24,7 +28,7 @@ async function delayAndAuthorize() {
   if (!getToken()) throw new ApiError('Request failed with status 401', 401, null);
 }
 
-export async function mockMatchJob(input) {
+export async function mockMatchPastedJob(input) {
   await delayAndAuthorize();
   // Only enforceable when the profile mock is also on; otherwise the real rule cannot be known.
   if (isMockProfileEnabled() && !hasMockProfile()) {
@@ -56,7 +60,111 @@ export async function mockMatchJob(input) {
     createdAt: new Date().toISOString(),
   };
   storedJobs = [job, ...storedJobs];
-  return { job: { ...job }, match: null, message: MATCH_UNAVAILABLE };
+  if (!hasBaseResume()) return { job: { ...job }, match: null, message: NO_RESUME_MESSAGE };
+  const match = buildMatch(job);
+  storedMatches.set(job.id, match);
+  return { job: { ...job }, match: { ...match }, message: 'Your job is saved and matched.' };
+}
+
+// Without the resume mock there is nothing to check, so assume a base resume exists.
+function hasBaseResume() {
+  return isMockResumeEnabled() ? hasMockResume() : true;
+}
+
+const KNOWN_SKILLS = [
+  'Java',
+  'Spring Boot',
+  'SQL',
+  'React',
+  'React Native',
+  'Docker',
+  'Git',
+  'Kubernetes',
+  'Python',
+  'TypeScript',
+  'AWS',
+  'Figma',
+];
+const RELATED = { React: 'React Native' };
+const STOP = new Set([
+  'with',
+  'work',
+  'team',
+  'small',
+  'senior',
+  'build',
+  'production',
+  'services',
+]);
+
+function findSkills(text) {
+  const lower = (text ?? '').toLowerCase();
+  return KNOWN_SKILLS.filter((skill) => new RegExp(`\\b${skill.toLowerCase()}\\b`).test(lower));
+}
+
+// A plausible stand-in for the backend's keyword match; same shape as ARCHITECTURE.md.
+function buildMatch(job) {
+  const jobSkills = findSkills(`${job.title ?? ''} ${job.description ?? ''}`);
+  const have = new Set(MOCK_RESUME_SKILLS.map((s) => s.toLowerCase()));
+  const matchedSkills = jobSkills.filter((s) => have.has(s.toLowerCase()));
+  const rest = jobSkills.filter((s) => !have.has(s.toLowerCase()));
+  const nearMatchedSkills = rest
+    .filter((s) => RELATED[s] && have.has(RELATED[s].toLowerCase()))
+    .map((s) => ({ jobSkill: s, resumeSkill: RELATED[s] }));
+  const words = new Set((job.description ?? '').toLowerCase().match(/[a-z]{5,}/g) ?? []);
+  const missingKeywords = [...words].filter((w) => !STOP.has(w)).slice(0, 5);
+  const remote = job.remoteType === 'remote' || /remote/i.test(job.location ?? '');
+  let locationFit = { status: 'unknown', note: 'We could not compare this job location.' };
+  if (remote) locationFit = { status: 'match', note: 'This job is remote.' };
+  else if (job.location)
+    locationFit = { status: 'partial', note: 'Check that you can work from this location.' };
+  return {
+    jobId: job.id,
+    resumeId: 1,
+    score: jobSkills.length ? Math.round((100 * matchedSkills.length) / jobSkills.length) : 0,
+    matchedSkills,
+    missingSkills: rest,
+    nearMatchedSkills,
+    missingKeywords,
+    suggestedHeadline: job.title ?? null,
+    locationFit,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function findVisibleJob(id) {
+  return [...storedJobs, ...scrapedJobs()].find((job) => job.id === Number(id));
+}
+
+function notFound() {
+  return new ApiError('Request failed with status 404', 404, {
+    status: 404,
+    message: 'Not found.',
+  });
+}
+
+// POST /jobs/{id}/match: 404 for an unknown job, 409 without a base resume; replaces any stored result.
+export async function mockMatchJobById(id) {
+  await delayAndAuthorize();
+  const job = findVisibleJob(id);
+  if (!job) throw notFound();
+  if (!hasBaseResume()) {
+    throw new ApiError('Request failed with status 409', 409, {
+      status: 409,
+      message: NO_RESUME_ERROR,
+    });
+  }
+  const match = buildMatch(job);
+  storedMatches.set(job.id, match);
+  return { ...match };
+}
+
+// GET /jobs/{id}/match: the stored result, or 404 when none yet.
+export async function mockGetStoredMatch(id) {
+  await delayAndAuthorize();
+  const match = storedMatches.get(Number(id));
+  if (!match) throw notFound();
+  return { ...match };
 }
 
 const SOURCES = ['greenhouse', 'lever', 'ashby', 'workable', 'smartrecruiters'];
@@ -74,6 +182,20 @@ const TITLES = [
   ['Marketing Manager', 'Marketing'],
   ['Support Specialist', 'Customer Support'],
   ['Machine Learning Engineer', 'Data & ML'],
+];
+const SKILLS_BY_TITLE = [
+  'Java, Spring Boot, SQL, Docker',
+  'Kubernetes, Docker, AWS, Git',
+  'React, TypeScript, Git',
+  'Python, SQL, AWS',
+  'Figma',
+  'Kubernetes, AWS, Python',
+  'SQL',
+  'Python, Docker',
+  'SQL',
+  'Git',
+  'SQL',
+  'Python, SQL, Docker',
 ];
 const place = (city, state, country) => ({ city, state, country });
 const US = 'United States';
@@ -120,7 +242,8 @@ function scrapedJobs() {
       source,
       sourceUrl: `https://jobs.example.com/${source}/${9001 + i}`,
       description: `Role ${i + 1}: build and run production services.
-Work with a small, senior team.`,
+Work with a small, senior team.
+Requirements: ${SKILLS_BY_TITLE[i % TITLES.length]}.`,
       postedAt,
       createdAt: postedAt,
     };
@@ -168,10 +291,7 @@ export async function mockListJobs({ scope, limit, offset, ...filters } = {}) {
   const scraped = scope === 'pasted' ? [] : scrapedJobs();
   const rows = [...pasted, ...scraped]
     .filter((job) => matchesFilters(job, filters))
-    .sort(
-      (a, b) =>
-        Date.parse(b.postedAt || b.createdAt) - Date.parse(a.postedAt || a.createdAt),
-    );
+    .sort((a, b) => Date.parse(b.postedAt || b.createdAt) - Date.parse(a.postedAt || a.createdAt));
   const start = Number(offset) || 0;
   const end = limit ? start + Number(limit) : rows.length;
   return rows.slice(start, end).map((job) => ({ ...job }));
@@ -190,24 +310,27 @@ function tally(entries) {
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
-// Facets for the jobs visible in the scope. Cascading: states follow the country, cities follow
-// the country and state; cities are capped at 100 like the backend.
-export async function mockJobFacets({ scope = 'scraped', country, state } = {}) {
+// Facets for the jobs visible in the scope, cross-filtered like the backend: each list applies
+// every active filter except its own dimension. Cities are capped at 100.
+export async function mockJobFacets({ scope = 'scraped', ...filters } = {}) {
   await delayAndAuthorize();
   const jobs = scope === 'pasted' ? storedJobs : scrapedJobs();
-  const rows = (job) => job.locations ?? [];
-  const inCountry = (row) => !country || same(row.country, country);
-  const inState = (row) => !state || same(row.state, state);
+  // Values of `field` from jobs/rows that match every filter except `field`'s own.
+  const values = (field) => {
+    const rest = { ...filters, [field]: undefined };
+    return jobs
+      .filter((job) => matchesFilters(job, rest))
+      .map((job) => {
+        if (field === 'category') return [job.category];
+        return (job.locations ?? [])
+          .filter((row) => matchesPlace({ locations: [row] }, rest))
+          .map((row) => row[field]);
+      });
+  };
   return {
-    categories: tally(jobs.map((job) => [job.category])),
-    countries: tally(jobs.map((job) => rows(job).map((row) => row.country))),
-    states: tally(jobs.map((job) => rows(job).filter(inCountry).map((row) => row.state))),
-    cities: tally(
-      jobs.map((job) =>
-        rows(job)
-          .filter((row) => inCountry(row) && inState(row))
-          .map((row) => row.city),
-      ),
-    ).slice(0, 100),
+    categories: tally(values('category')),
+    countries: tally(values('country')),
+    states: tally(values('state')),
+    cities: tally(values('city')).slice(0, 100),
   };
 }

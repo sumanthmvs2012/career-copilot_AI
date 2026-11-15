@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.careercopilot.common.storage.StorageException;
 import com.careercopilot.common.storage.StorageService;
+import com.careercopilot.matches.SkillExtractor;
 import com.careercopilot.profiles.Profile;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.profiles.ProfileRepository;
@@ -46,7 +47,7 @@ class ResumeServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResumeService(profiles, resumes, storage, new TextExtractor());
+        service = new ResumeService(profiles, resumes, storage, new TextExtractor(), new SkillExtractor());
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
     }
@@ -131,6 +132,7 @@ class ResumeServiceTest {
         assertThat(result.getFileName()).isEqualTo("My CV.PDF");
         assertThat(result.getContentType()).isEqualTo(TextExtractor.PDF);
         assertThat(result.getParsedText()).contains("Hello resume");
+        assertThat(result.getSkills()).isEqualTo("[]");
         assertThat(result.getFilePath()).matches("resumes/10/[0-9a-f-]{36}\\.pdf");
         verify(storage).store(eq(result.getFilePath()), any(InputStream.class), anyLong());
         verify(storage, never()).delete(anyString());
@@ -299,5 +301,40 @@ class ResumeServiceTest {
         when(profiles.findByUserId(1L)).thenReturn(Optional.empty());
 
         assertThat(service.list(1L)).isEmpty();
+    }
+
+    @Test
+    void uploadStoresTheSkillsFoundInTheResumeText() throws IOException {
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByProfileIdAndIsBaseTrue(10L)).thenReturn(Optional.empty());
+        when(resumes.save(any(Resume.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Resume result = service.upload(1L, pdfFile("cv.pdf", TestFiles.pdf("Java and React developer")));
+
+        assertThat(result.getSkills()).isEqualTo("[\"Java\",\"React\"]");
+    }
+
+    @Test
+    void getFillsInSkillsForAnOlderResumeOnce() {
+        Resume resume = new Resume(10L, "k", "cv.pdf", TextExtractor.PDF, "Python and Docker");
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(resume));
+
+        service.get(1L, 5L);
+        service.get(1L, 5L);
+
+        assertThat(resume.getSkills()).isEqualTo("[\"Python\",\"Docker\"]");
+        verify(resumes, org.mockito.Mockito.times(1)).save(resume);
+    }
+
+    @Test
+    void listFillsInSkillsForAnOlderResume() {
+        Resume resume = new Resume(10L, "k", "cv.pdf", TextExtractor.PDF, "Kubernetes");
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByProfileIdOrderByIsBaseDescCreatedAtDesc(10L)).thenReturn(List.of(resume));
+
+        service.list(1L);
+
+        assertThat(resume.getSkills()).isEqualTo("[\"Kubernetes\"]");
     }
 }

@@ -3,6 +3,8 @@ package com.careercopilot.jobs;
 import com.careercopilot.jobs.scraper.CategoryClassifier;
 import com.careercopilot.jobs.scraper.LocationParser;
 import com.careercopilot.jobs.scraper.ParsedLocation;
+import com.careercopilot.matches.MatchResponse;
+import com.careercopilot.matches.MatchService;
 import com.careercopilot.profiles.Profile;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.profiles.ProfileRepository;
@@ -24,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class JobService {
 
-    static final String NOT_AVAILABLE_MESSAGE = "Matching is not available yet; your job is saved.";
+    static final String NO_RESUME_MESSAGE = "Upload a resume to see your match.";
+    static final String MATCHED_MESSAGE = "Matched against your base resume.";
     static final int DEFAULT_LIMIT = 50;
     static final int MAX_LIMIT = 100;
     static final String DEFAULT_TITLE = "Pasted job";
@@ -36,14 +39,16 @@ public class JobService {
     private final CompanyRepository companies;
     private final JobSearchRepository jobSearch;
     private final JobLocationRepository locations;
+    private final MatchService matchService;
 
     public JobService(ProfileRepository profiles, JobRepository jobs, CompanyRepository companies,
-            JobSearchRepository jobSearch, JobLocationRepository locations) {
+            JobSearchRepository jobSearch, JobLocationRepository locations, MatchService matchService) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.companies = companies;
         this.jobSearch = jobSearch;
         this.locations = locations;
+        this.matchService = matchService;
     }
 
     @Transactional
@@ -66,9 +71,10 @@ public class JobService {
         List<LocationDto> savedLocations = saveLocations(saved.getId(), job.getLocation());
 
         log.info("Pasted job saved for profile {}", profile.getId());
+        MatchResponse match = matchService.matchIfResume(profile, saved);
         return new JobMatchResponse(
-                JobResponse.from(saved, company == null ? null : company.getName(), savedLocations), null,
-                NOT_AVAILABLE_MESSAGE);
+                JobResponse.from(saved, company == null ? null : company.getName(), savedLocations), match,
+                match == null ? NO_RESUME_MESSAGE : MATCHED_MESSAGE);
     }
 
     @Transactional(readOnly = true)
@@ -78,10 +84,7 @@ public class JobService {
         Long profileId = scope == JobScope.SCRAPED
                 ? null
                 : profiles.findByUserId(userId).map(Profile::getId).orElse(null);
-        Instant postedAfter = filter.postedWithin() == null
-                ? null
-                : Instant.now().minus(filter.postedWithin(), ChronoUnit.DAYS);
-        List<Job> visible = jobSearch.search(profileId, scope, filter, postedAfter, filter.offset(), limit);
+        List<Job> visible = jobSearch.search(profileId, scope, filter, postedAfter(filter), filter.offset(), limit);
 
         Set<Long> companyIds = visible.stream()
                 .map(Job::getCompanyId)
@@ -102,11 +105,15 @@ public class JobService {
 
     /** Facet counts follow the same visibility rule as the list, so another user's pasted jobs never appear. */
     @Transactional(readOnly = true)
-    public JobFacets facets(Long userId, JobScope scope, String country, String state) {
+    public JobFacets facets(Long userId, JobScope scope, JobFilter filter) {
         Long profileId = scope == JobScope.SCRAPED
                 ? null
                 : profiles.findByUserId(userId).map(Profile::getId).orElse(null);
-        return jobSearch.facets(profileId, scope, country, state);
+        return jobSearch.facets(profileId, scope, filter, postedAfter(filter));
+    }
+
+    private static Instant postedAfter(JobFilter filter) {
+        return filter.postedWithin() == null ? null : Instant.now().minus(filter.postedWithin(), ChronoUnit.DAYS);
     }
 
     /** One query for the whole page, so listing never loads locations job by job. */

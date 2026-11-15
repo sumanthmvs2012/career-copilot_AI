@@ -274,6 +274,7 @@ export default function JobsPage() {
             scope={scope}
             value={{ category, country, state, city }}
             onChange={updatePlace}
+            others={{ q, location, source, remoteType, postedWithin }}
             showClear={false}
           />
           <Button type="button" variant="secondary" onClick={clearFilters} disabled={!hasFilters}>

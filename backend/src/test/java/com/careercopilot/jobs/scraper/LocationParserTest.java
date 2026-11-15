@@ -68,7 +68,7 @@ class LocationParserTest {
         Arguments.of("Remote - US", "||" + US),
         Arguments.of("Hybrid - London, UK", "London||United Kingdom"),
         Arguments.of("Austin, TX or Remote - US", "Austin|Texas|" + US + "; ||" + US),
-        Arguments.of("NYC", "NYC||"),
+        Arguments.of("NYC", "New York||"),
         Arguments.of("SAN FRANCISCO", "San Francisco||"),
         Arguments.of("berlin, germany", "Berlin||Germany"),
         Arguments.of("seattle, wa", "Seattle|Washington|" + US),
@@ -82,7 +82,7 @@ class LocationParserTest {
         Arguments.of("Washington, D.C.", "Washington|District of Columbia|" + US),
         Arguments.of("Mexico City, Mexico", "Mexico City||Mexico"),
         Arguments.of("Tel Aviv, Israel", "Tel Aviv||Israel"),
-        Arguments.of("Bangalore, India / Hyderabad, India", "Bangalore||India; Hyderabad||India"),
+        Arguments.of("Bangalore, India / Hyderabad, India", "Bengaluru||India; Hyderabad||India"),
         Arguments.of("Gurgaon, Haryana, India", "Gurgaon|Haryana|India"),
         Arguments.of("Remote, EMEA", ""),
         Arguments.of("Multiple Locations", ""),
@@ -111,7 +111,7 @@ class LocationParserTest {
         Arguments.of("O'Fallon, MO", "O'Fallon|Missouri|" + US),
         Arguments.of("St. Louis, MO", "St. Louis|Missouri|" + US),
         Arguments.of("Winston-Salem, NC", "Winston-Salem|North Carolina|" + US),
-        Arguments.of("India-Bangalore", "Bangalore||India"),
+        Arguments.of("India-Bangalore", "Bengaluru||India"),
         Arguments.of("UK-London", "London||United Kingdom"),
         Arguments.of("CA-Toronto", "Toronto||Canada"),
         Arguments.of("Germany-Remote", "||Germany"),
@@ -119,7 +119,30 @@ class LocationParserTest {
         Arguments.of("Singapore, Singapore", "Singapore||Singapore"),
         Arguments.of("Seattle, WA / Seattle, WA", "Seattle|Washington|" + US),
         Arguments.of("Room 12 #5 !!", ""),
-        Arguments.of("Dallas, TX, US; Remote", "Dallas|Texas|" + US));
+        Arguments.of("Dallas, TX, US; Remote", "Dallas|Texas|" + US),
+        // A city between a city and a US/Canada country is a city, never a state.
+        Arguments.of("Seattle, Atlanta, United States", "Seattle||; Atlanta||" + US),
+        Arguments.of("San Francisco, Seattle, US", "San Francisco||; Seattle||" + US),
+        Arguments.of("Toronto, Atlanta, Canada", "Toronto||; Atlanta||Canada"),
+        Arguments.of("Sydney, Melbourne, Australia", "Sydney||; Melbourne||Australia"),
+        // Aliases collapse to one spelling.
+        Arguments.of("SF", "San Francisco||"),
+        Arguments.of("San Francisco, CA", "San Francisco|California|" + US),
+        Arguments.of("SF, CA", "San Francisco|California|" + US),
+        Arguments.of("New York City", "New York||"),
+        Arguments.of("New York City, NY", "New York|New York|" + US),
+        Arguments.of("NYC; New York", "New York||"),
+        Arguments.of("SEA", "Seattle||"),
+        Arguments.of("Seattle; SEA", "Seattle||"),
+        Arguments.of("IN-Bengaluru", "Bengaluru||India"),
+        Arguments.of("Bangalore", "Bengaluru||"),
+        Arguments.of("Bengaluru, Karnataka, India", "Bengaluru|Karnataka|India"),
+        Arguments.of("NYC-Privy", "New York||"),
+        // Junk tokens and countries.
+        Arguments.of("Location", ""),
+        Arguments.of("Location, Remote", ""),
+        Arguments.of("Taiwan", "||Taiwan"),
+        Arguments.of("Taipei, Taiwan", "Taipei||Taiwan"));
   }
 
   @ParameterizedTest(name = "[{index}] \"{0}\"")

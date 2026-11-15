@@ -2,6 +2,8 @@ package com.careercopilot.resumes;
 
 import com.careercopilot.common.storage.StorageException;
 import com.careercopilot.common.storage.StorageService;
+import com.careercopilot.matches.SkillExtractor;
+import com.careercopilot.matches.SkillJson;
 import com.careercopilot.profiles.Profile;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.profiles.ProfileRepository;
@@ -28,13 +30,15 @@ public class ResumeService {
     private final ResumeRepository resumes;
     private final StorageService storage;
     private final TextExtractor extractor;
+    private final SkillExtractor skillExtractor;
 
     public ResumeService(ProfileRepository profiles, ResumeRepository resumes, StorageService storage,
-            TextExtractor extractor) {
+            TextExtractor extractor, SkillExtractor skillExtractor) {
         this.profiles = profiles;
         this.resumes = resumes;
         this.storage = storage;
         this.extractor = extractor;
+        this.skillExtractor = skillExtractor;
     }
 
     @Transactional
@@ -76,7 +80,9 @@ public class ResumeService {
                 previous.setBase(false);
                 resumes.save(previous);
             });
-            saved = resumes.save(new Resume(profile.getId(), key, displayName, contentType, text));
+            Resume created = new Resume(profile.getId(), key, displayName, contentType, text);
+            created.setSkills(SkillJson.write(skillExtractor.extract(text)));
+            saved = resumes.save(created);
         } catch (RuntimeException e) {
             storage.delete(key);
             throw e;
@@ -109,19 +115,31 @@ public class ResumeService {
         log.info("Resume {} deleted for profile {}", id, profile.getId());
     }
 
-    @Transactional(readOnly = true)
+    /** Resumes uploaded before skills existed get them filled in on first read. */
+    @Transactional
     public List<Resume> list(Long userId) {
         Profile profile = profiles.findByUserId(userId).orElse(null);
         if (profile == null) {
             return List.of();
         }
-        return resumes.findByProfileIdOrderByIsBaseDescCreatedAtDesc(profile.getId());
+        List<Resume> found = resumes.findByProfileIdOrderByIsBaseDescCreatedAtDesc(profile.getId());
+        found.forEach(this::ensureSkills);
+        return found;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Resume get(Long userId, Long id) {
         Profile profile = profiles.findByUserId(userId).orElseThrow(ResumeNotFoundException::new);
-        return resumes.findByIdAndProfileId(id, profile.getId()).orElseThrow(ResumeNotFoundException::new);
+        Resume resume = resumes.findByIdAndProfileId(id, profile.getId()).orElseThrow(ResumeNotFoundException::new);
+        ensureSkills(resume);
+        return resume;
+    }
+
+    private void ensureSkills(Resume resume) {
+        if (resume.getSkills() == null) {
+            resume.setSkills(SkillJson.write(skillExtractor.extract(resume.getParsedText())));
+            resumes.save(resume);
+        }
     }
 
     private static String extensionOf(String name) {

@@ -169,7 +169,9 @@ describe('DashboardPage', () => {
       const select = await screen.findByLabelText('Change status for Engineer');
       await user.selectOptions(select, 'offer');
 
-      expect(await screen.findByText('We could not save the status. Please try again.')).toBeInTheDocument();
+      expect(
+        await screen.findByText('We could not save the status. Please try again.'),
+      ).toBeInTheDocument();
       expect(select).toHaveValue('draft');
     });
 
@@ -377,11 +379,18 @@ describe('DashboardPage', () => {
       vi.mocked(listJobs).mockResolvedValue(SCRAPED);
       const user = renderDashboard();
       await screen.findByText('Platform Engineer');
-      expect(getJobFacets).toHaveBeenCalledWith({ scope: 'scraped', country: '', state: '' });
+      expect(getJobFacets).toHaveBeenCalledWith({
+        scope: 'scraped',
+        category: '',
+        country: '',
+        state: '',
+        city: '',
+      });
       for (const label of ['Category', 'Country', 'State', 'City']) {
         expect(screen.getByLabelText(label)).toBeInTheDocument();
       }
       expect(screen.getByLabelText('State')).toBeDisabled();
+      expect(screen.getAllByRole('option', { name: 'Select a country first' })).toHaveLength(2);
 
       await user.selectOptions(screen.getByLabelText('Country'), 'United States');
       await waitFor(() =>
@@ -402,6 +411,39 @@ describe('DashboardPage', () => {
         }),
       );
       expect(getProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it('narrows the dashboard facets when a category and a country are chosen', async () => {
+      vi.mocked(listJobs).mockResolvedValue(SCRAPED);
+      vi.mocked(getJobFacets).mockImplementation(async ({ category }) =>
+        category === 'Design'
+          ? {
+              ...FACETS,
+              countries: [{ value: 'Canada', count: 2 }],
+              states: [{ value: 'ON', count: 2 }],
+            }
+          : FACETS,
+      );
+      const user = renderDashboard();
+      await screen.findByRole('option', { name: 'United States (90)' });
+      await user.selectOptions(screen.getByLabelText('Category'), 'Design');
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('option', { name: 'United States (90)' }),
+        ).not.toBeInTheDocument(),
+      );
+      await user.selectOptions(screen.getByLabelText('Country'), 'Canada');
+      await waitFor(() =>
+        expect(getJobFacets).toHaveBeenLastCalledWith({
+          scope: 'scraped',
+          category: 'Design',
+          country: 'Canada',
+          state: '',
+          city: '',
+        }),
+      );
+      expect(await screen.findByRole('option', { name: 'ON (2)' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'CA (50)' })).not.toBeInTheDocument();
     });
 
     it('shows the filtered empty state and Clear filters restores the list', async () => {
@@ -462,7 +504,7 @@ describe('DashboardPage', () => {
       expect(await screen.findByText('Platform Engineer')).toBeInTheDocument();
       expect(screen.getByText('Greenhouse')).toBeInTheDocument();
       expect(screen.getByText('Posted 3 days ago')).toBeInTheDocument();
-      expect(screen.getByText('Match with your base resume: coming soon')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Match with my resume' })).toBeInTheDocument();
       const link = screen.getByRole('link', { name: /View posting/ });
       expect(link).toHaveAttribute('href', SCRAPED[0].sourceUrl);
       expect(link).toHaveAttribute('target', '_blank');

@@ -57,11 +57,19 @@ public class JobController {
     public JobFacets facets(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String remoteType,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String postedWithin,
+            @RequestParam(required = false) String category,
             @RequestParam(required = false) String country,
-            @RequestParam(required = false) String state) {
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String city) {
         JobScope parsedScope = scope == null || scope.isBlank() ? JobScope.SCRAPED : JobScope.parse(scope);
-        return jobService.facets(userId(jwt), parsedScope, JobFilter.place(country, "country"),
-                JobFilter.place(state, "state"));
+        JobFilter filter = JobFilter.parse(q, source, remoteType, location, postedWithin, null, category, country,
+                state, city);
+        return jobService.facets(userId(jwt), parsedScope, filter);
     }
 
     private static int parseLimit(String value) {

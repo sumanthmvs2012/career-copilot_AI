@@ -187,7 +187,11 @@ function ApplicationRow({ app, onUnauthorized }) {
           disabled={saving}
           onChange={changeStatus}
         />
-        {saving && <span role="status" className="muted">Saving…</span>}
+        {saving && (
+          <span role="status" className="muted">
+            Savingâ€¦
+          </span>
+        )}
         {error && <Alert variant="error">{error}</Alert>}
       </td>
       <td>{row.appliedAt ? new Date(row.appliedAt).toLocaleDateString() : ''}</td>

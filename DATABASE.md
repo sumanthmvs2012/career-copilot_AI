@@ -7,20 +7,26 @@ Part one: the tables. Users hold the login details. Profiles link to users and h
 Part two: the columns => Users: id, email, password hash, created at, updated at.
                          Profiles: id, user id, full name, headline, location, remote ok, auto submit enabled (default false), created at, updated at.
                          Resumes: id, profile id, file path (storage key, never a URL), file name, content type, parsed text, is base, base resume id (nullable),
-                                  created at, job id (nullable, set on tailored copies).
-                                  Skills (jsonb) and embedding (vector 1024) are added by the Phase 5 AI migration.
+                                  created at, job id (nullable, set on tailored copies), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7).
+                                  The skills column may become jsonb, and embedding (vector 1024) is added, by the Phase 5 AI migration.
                          Companies: id, name, website, careers URL, ats type (greenhouse, lever, ashby, workable, smartrecruiters; null for a company typed in
                                     by a user on a pasted job), board token, created at.
                          Jobs: id, company id (nullable for pasted jobs), created by profile id (nullable; set only for source manual, so a pasted job is visible
                                only to the user who pasted it), source (greenhouse, lever, ashby, workable, smartrecruiters, manual), external id (null for manual),
                                title, description, location (raw text from the source), category (nullable; fixed list in ARCHITECTURE.md, indexed),
-                               remote type (remote, hybrid, onsite), source URL, embedding (vector 1024, Phase 5), posted at, scraped at, created at.
+                               remote type (remote, hybrid, onsite), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7; may become jsonb in Phase 5), source URL, embedding (vector 1024, Phase 5), posted at, scraped at, created at.
                          Job locations: id, job id (foreign key to jobs, deleted with the job), city, state, country (each nullable, but at least one is set;
                                         a job can have several rows; indexed by country, state, city and by job id).
 
 
-Part three: the columns => Job matches: id, profile id, job id, score (0-100), missing skills, near matched skills, missing keywords, suggested headline,
-                                         location fit, created at.
+Part three: the columns => Job matches (V7): id, profile id (foreign key, deleted with the profile), job id (foreign key, deleted with the job),
+                                         resume id (nullable foreign key, cleared when the resume is deleted), score (INT, CHECK 0-100),
+                                         matched skills, missing skills, near matched skills, missing keywords (each TEXT holding JSON: arrays of strings,
+                                         except near matched skills, an array of {jobSkill, resumeSkill}), suggested headline (VARCHAR 200, nullable),
+                                         location fit status (VARCHAR 20, CHECK match, partial, mismatch, unknown; default unknown),
+                                         location fit note (VARCHAR 300, nullable), created at, updated at.
+                                         Unique on (profile id, job id); indexed by profile id and job id. These JSON text columns (and the skills
+                                         columns above) are TEXT so H2 and PostgreSQL both work; they may become jsonb with the Phase 5 migration.
                            Applications: id, profile id, job id, resume id, status (draft, applied, interviewing, offer, rejected, withdrawn), cover letter,
                                          submitted at, submitted by (user, auto), created at, updated at.
                            Interview questions: id, job id, application id, question, category, created at.

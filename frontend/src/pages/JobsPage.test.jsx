@@ -69,7 +69,7 @@ const FACETS = {
 const urlParams = () =>
   Object.fromEntries(new URLSearchParams(screen.getByTestId('search').textContent));
 
-const lastCall =() => vi.mocked(listJobs).mock.calls.at(-1)[0];
+const lastCall = () => vi.mocked(listJobs).mock.calls.at(-1)[0];
 
 describe('JobsPage', () => {
   beforeEach(() => {
@@ -100,7 +100,7 @@ describe('JobsPage', () => {
       expect.objectContaining({ limit: 20, offset: 0, scope: '', q: '' }),
     );
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
-    expect(screen.getAllByText(/coming soon/)).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: 'Match with my resume' })).toHaveLength(3);
   });
 
   it('has a labelled control for every filter and a back link', async () => {
@@ -321,7 +321,13 @@ describe('JobsPage', () => {
       ).toBeInTheDocument();
       expect(screen.getByLabelText('State')).toBeDisabled();
       expect(screen.getByLabelText('City')).toBeDisabled();
-      expect(getJobFacets).toHaveBeenCalledWith({ scope: 'scraped', country: '', state: '' });
+      expect(getJobFacets).toHaveBeenCalledWith({
+        scope: 'scraped',
+        category: '',
+        country: '',
+        state: '',
+        city: '',
+      });
     });
 
     it('syncs the filters with the URL and resets the cascade', async () => {
@@ -359,14 +365,24 @@ describe('JobsPage', () => {
       await user.selectOptions(screen.getByLabelText('State'), 'CA');
       await user.selectOptions(screen.getByLabelText('Country'), 'Canada');
       expect(urlParams()).toEqual({ category: 'Design', country: 'Canada' });
-      expect(getJobFacets).toHaveBeenLastCalledWith({
-        scope: 'scraped',
-        country: 'Canada',
-        state: '',
-      });
+      await waitFor(() =>
+        expect(getJobFacets).toHaveBeenLastCalledWith({
+          scope: 'scraped',
+          category: 'Design',
+          country: 'Canada',
+          state: '',
+          city: '',
+        }),
+      );
     });
 
     it('reads the place filters from the URL', async () => {
+      vi.mocked(getJobFacets).mockResolvedValue({
+        categories: [{ value: 'Design', count: 2 }],
+        countries: [{ value: 'Canada', count: 2 }],
+        states: [{ value: 'ON', count: 2 }],
+        cities: [{ value: 'Toronto', count: 2 }],
+      });
       renderJobs('/jobs?category=Design&country=Canada&state=ON&city=Toronto&scope=pasted');
       await screen.findByText('Job 1');
       expect(lastCall()).toMatchObject({
@@ -380,9 +396,50 @@ describe('JobsPage', () => {
       expect(screen.getByLabelText('State')).toBeEnabled();
       expect(getJobFacets).toHaveBeenCalledWith({
         scope: 'pasted',
+        category: 'Design',
         country: 'Canada',
         state: 'ON',
+        city: 'Toronto',
       });
+    });
+
+    it('sends every active filter to the facets request', async () => {
+      renderJobs(
+        '/jobs?q=engineer&location=remote&source=lever&remoteType=hybrid&postedWithin=7&country=Canada',
+      );
+      await screen.findByText('Job 1');
+      await waitFor(() =>
+        expect(getJobFacets).toHaveBeenCalledWith({
+          scope: 'scraped',
+          q: 'engineer',
+          location: 'remote',
+          source: 'lever',
+          remoteType: 'hybrid',
+          postedWithin: '7',
+          category: '',
+          country: 'Canada',
+          state: '',
+          city: '',
+        }),
+      );
+    });
+
+    it('narrows the countries when a category is chosen and clears children that vanish', async () => {
+      const user = renderJobs('/jobs?country=United+States&state=CA');
+      await screen.findByRole('option', { name: 'Canada (10)' });
+      vi.mocked(getJobFacets).mockImplementation(async ({ category }) =>
+        category === 'Design'
+          ? { ...FACETS, countries: [{ value: 'Canada', count: 2 }], states: [], cities: [] }
+          : FACETS,
+      );
+      await user.selectOptions(screen.getByLabelText('Category'), 'Design');
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('option', { name: 'United States (90)' }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(screen.getByRole('option', { name: 'Canada (2)' })).toBeInTheDocument();
+      await waitFor(() => expect(urlParams()).toEqual({ category: 'Design' }));
     });
 
     it('Clear filters removes the place filters from the URL', async () => {

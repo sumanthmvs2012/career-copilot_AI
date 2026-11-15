@@ -46,7 +46,9 @@ describe('TrackJobButton', () => {
     render(<TrackJobButton jobId={9} />);
 
     await user.click(screen.getByRole('button', { name: /Track this job/ }));
-    expect(await screen.findByText('We could not track this job. Please try again.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('We could not track this job. Please try again.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('boom')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Track this job/ }));

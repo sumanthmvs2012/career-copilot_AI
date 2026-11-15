@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Tuple;
 import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.AbstractQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -40,6 +41,17 @@ public class JobSearchRepository {
         Root<Job> job = query.from(Job.class);
         Expression<Instant> sortTime = cb.coalesce(job.<Instant>get("postedAt"), job.<Instant>get("createdAt"));
 
+        List<Predicate> where = jobPredicates(cb, query, job, profileId, scope, filter, postedAfter, true, true);
+
+        query.select(job).where(where.toArray(new Predicate[0]))
+                .orderBy(cb.desc(sortTime), cb.desc(job.get("id")));
+        return em.createQuery(query).setFirstResult(offset).setMaxResults(limit).getResultList();
+    }
+
+    /** The shared filters, with optional category and place (EXISTS on one location row) parts. */
+    private List<Predicate> jobPredicates(CriteriaBuilder cb, AbstractQuery<?> query, Root<Job> job, Long profileId,
+            JobScope scope, JobFilter filter, Instant postedAfter, boolean withCategory, boolean withPlace) {
+        Expression<Instant> sortTime = cb.coalesce(job.<Instant>get("postedAt"), job.<Instant>get("createdAt"));
         List<Predicate> where = new ArrayList<>();
         where.add(visible(cb, job, profileId, scope));
         if (filter.source() != null) {
@@ -63,11 +75,11 @@ public class JobSearchRepository {
         if (postedAfter != null) {
             where.add(cb.greaterThanOrEqualTo(sortTime, postedAfter));
         }
-        if (filter.category() != null) {
+        if (withCategory && filter.category() != null) {
             // Stored categories come from the fixed list, and the filter holds the canonical spelling.
             where.add(cb.equal(cb.lower(job.<String>get("category")), filter.category().toLowerCase(Locale.ROOT)));
         }
-        if (filter.country() != null || filter.state() != null || filter.city() != null) {
+        if (withPlace && (filter.country() != null || filter.state() != null || filter.city() != null)) {
             // One EXISTS keeps every given place part on the same location row of the job.
             Subquery<Long> place = query.subquery(Long.class);
             Root<JobLocation> l = place.from(JobLocation.class);
@@ -79,49 +91,51 @@ public class JobSearchRepository {
             place.select(l.<Long>get("id")).where(onRow.toArray(new Predicate[0]));
             where.add(cb.exists(place));
         }
-
-        query.select(job).where(where.toArray(new Predicate[0]))
-                .orderBy(cb.desc(sortTime), cb.desc(job.get("id")));
-        return em.createQuery(query).setFirstResult(offset).setMaxResults(limit).getResultList();
+        return where;
     }
 
     /**
      * Dropdown options for the jobs the caller can see in the scope, each with its distinct job count, most common
-     * first. States are limited to the given country and cities to the given country and state.
+     * first. Standard faceted search: every list applies all active filters except its own dimension (categories
+     * ignore category, countries ignore country, states ignore state, cities ignore city). Place filters stay on
+     * the same location row as the facet value. Four queries in total.
      */
-    public JobFacets facets(Long profileId, JobScope scope, String country, String state) {
-        List<FacetValue> categories = categoryFacets(profileId, scope);
-        List<FacetValue> countries = placeFacets(profileId, scope, "country", null, null, 0);
-        List<FacetValue> states = placeFacets(profileId, scope, "state", country, null, 0);
-        List<FacetValue> cities = placeFacets(profileId, scope, "city", country, state, MAX_CITIES);
+    public JobFacets facets(Long profileId, JobScope scope, JobFilter filter, Instant postedAfter) {
+        List<FacetValue> categories = categoryFacets(profileId, scope, filter, postedAfter);
+        List<FacetValue> countries = placeFacets(profileId, scope, filter, postedAfter, "country", 0);
+        List<FacetValue> states = placeFacets(profileId, scope, filter, postedAfter, "state", 0);
+        List<FacetValue> cities = placeFacets(profileId, scope, filter, postedAfter, "city", MAX_CITIES);
         return new JobFacets(categories, countries, states, cities);
     }
 
-    private List<FacetValue> categoryFacets(Long profileId, JobScope scope) {
+    private List<FacetValue> categoryFacets(Long profileId, JobScope scope, JobFilter filter, Instant postedAfter) {
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = cb.createTupleQuery();
         Root<Job> job = query.from(Job.class);
         Expression<Long> count = cb.countDistinct(job.<Long>get("id"));
+        List<Predicate> where = jobPredicates(cb, query, job, profileId, scope, filter, postedAfter, false, true);
+        where.add(cb.isNotNull(job.get("category")));
         query.multiselect(job.<String>get("category"), count)
-                .where(visible(cb, job, profileId, scope), cb.isNotNull(job.get("category")))
+                .where(where.toArray(new Predicate[0]))
                 .groupBy(job.get("category"))
                 .orderBy(cb.desc(count), cb.asc(job.get("category")));
         return toFacets(em.createQuery(query).getResultList());
     }
 
-    private List<FacetValue> placeFacets(Long profileId, JobScope scope, String field, String country, String state,
-            int max) {
+    private List<FacetValue> placeFacets(Long profileId, JobScope scope, JobFilter filter, Instant postedAfter,
+            String field, int max) {
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = cb.createTupleQuery();
         Root<Job> job = query.from(Job.class);
         Root<JobLocation> l = query.from(JobLocation.class);
         Expression<Long> count = cb.countDistinct(job.<Long>get("id"));
-        List<Predicate> where = new ArrayList<>();
+        // Place filters go on the joined row itself, except the one for this facet's own dimension.
+        List<Predicate> where = jobPredicates(cb, query, job, profileId, scope, filter, postedAfter, true, false);
         where.add(cb.equal(l.get("jobId"), job.get("id")));
-        where.add(visible(cb, job, profileId, scope));
         where.add(cb.isNotNull(l.get(field)));
-        addPlace(cb, where, l, "country", country);
-        addPlace(cb, where, l, "state", state);
+        addPlace(cb, where, l, "country", field.equals("country") ? null : filter.country());
+        addPlace(cb, where, l, "state", field.equals("state") ? null : filter.state());
+        addPlace(cb, where, l, "city", field.equals("city") ? null : filter.city());
         query.multiselect(l.<String>get(field), count)
                 .where(where.toArray(new Predicate[0]))
                 .groupBy(l.get(field))

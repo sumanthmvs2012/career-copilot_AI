@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -236,5 +236,25 @@ describe('ResumePage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'We could not upload your resume. Please try again.',
     );
+  });
+
+  describe('skills', () => {
+    it('shows extracted skills as chips', async () => {
+      vi.mocked(listResumes).mockResolvedValue([{ ...RESUME, skills: ['Java', 'SQL'] }]);
+      renderResume();
+      const list = await screen.findByRole('list', { name: 'Skills found in jane-cv.pdf' });
+      expect(
+        within(list)
+          .getAllByRole('listitem')
+          .map((li) => li.textContent),
+      ).toEqual(['Java', 'SQL']);
+    });
+
+    it.each([[[]], [undefined]])('hides the section when skills are %j', async (skills) => {
+      vi.mocked(listResumes).mockResolvedValue([{ ...RESUME, skills }]);
+      renderResume();
+      await screen.findByText('jane-cv.pdf');
+      expect(screen.queryByText('Skills found')).not.toBeInTheDocument();
+    });
   });
 });

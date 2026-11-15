@@ -6,6 +6,9 @@ import com.careercopilot.auth.EmailAlreadyUsedException;
 import com.careercopilot.auth.InvalidCredentialsException;
 import com.careercopilot.auth.PasswordTooLongException;
 import com.careercopilot.jobs.InvalidJobQueryException;
+import com.careercopilot.matches.JobNotFoundException;
+import com.careercopilot.matches.MatchNotFoundException;
+import com.careercopilot.matches.NoBaseResumeException;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.resumes.InvalidResumeFileException;
 import com.careercopilot.resumes.ResumeLimitReachedException;
@@ -106,6 +109,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ApplicationAlreadyExistsException.class)
     ResponseEntity<ErrorResponse> handleApplicationExists(ApplicationAlreadyExistsException ex) {
         return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "You already track this job."));
+    }
+
+    @ExceptionHandler(JobNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleJobNotFound(JobNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Job not found."));
+    }
+
+    @ExceptionHandler(MatchNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleMatchNotFound(MatchNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "No match yet for this job."));
+    }
+
+    @ExceptionHandler(NoBaseResumeException.class)
+    ResponseEntity<ErrorResponse> handleNoBaseResume(NoBaseResumeException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Upload a resume first to see your match."));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

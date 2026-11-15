@@ -1,6 +1,8 @@
 package com.careercopilot.resumes;
 
+import com.careercopilot.matches.SkillJson;
 import java.time.Instant;
+import java.util.List;
 
 public record ResumeResponse(
         Long id,
@@ -9,7 +11,8 @@ public record ResumeResponse(
         boolean isBase,
         Long baseResumeId,
         int textLength,
-        Instant createdAt) {
+        Instant createdAt,
+        List<String> skills) {
 
     public static ResumeResponse from(Resume resume) {
         return new ResumeResponse(
@@ -19,6 +22,7 @@ public record ResumeResponse(
                 resume.isBase(),
                 resume.getBaseResumeId(),
                 resume.getParsedText() == null ? 0 : resume.getParsedText().length(),
-                resume.getCreatedAt());
+                resume.getCreatedAt(),
+                SkillJson.readStrings(resume.getSkills()));
     }
 }

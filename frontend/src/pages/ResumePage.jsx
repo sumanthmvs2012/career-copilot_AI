@@ -21,6 +21,18 @@ function ResumeItem({ resume, confirming, deleting, onAskDelete, onCancel, onCon
         {resume.isBase && <span className="badge">Base</span>}
         {resume.textLength > 0 && <span>Text extracted</span>}
       </p>
+      {resume.skills?.length > 0 && (
+        <div className="resume-skills">
+          <p className="resume-skills__title muted">Skills found</p>
+          <ul className="chip-list" aria-label={`Skills found in ${resume.fileName}`}>
+            {resume.skills.map((skill) => (
+              <li key={skill} className="skill-chip">
+                {skill}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="resume-list__actions">
         {confirming ? (
           <>

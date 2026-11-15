@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.careercopilot.matches.MatchResponse;
+import com.careercopilot.matches.MatchService;
 import com.careercopilot.profiles.Profile;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.profiles.ProfileRepository;
@@ -25,6 +27,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class JobServiceTest {
 
+    private static final JobFilter GERMANY = new JobFilter(null, null, null, null, null, 0, null, "Germany", null, null);
+
     private static final String DESCRIPTION = "  Build and run backend services in Java.  ";
 
     @Mock
@@ -41,6 +45,9 @@ class JobServiceTest {
 
     @Mock
     private JobLocationRepository locations;
+
+    @Mock
+    private MatchService matchService;
 
     @InjectMocks
     private JobService service;
@@ -84,6 +91,23 @@ class JobServiceTest {
     }
 
     @Test
+    void matchReturnsTheComputedMatchWhenTheCallerHasABaseResume() {
+        Profile owner = profile(5L);
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(owner));
+        stubSave();
+        MatchResponse computed = new MatchResponse(9L, 3L, 80, List.of("Java"), List.of(), List.of(), List.of(),
+                "Engineer", null, null);
+        when(matchService.matchIfResume(eq(owner), any(Job.class))).thenReturn(computed);
+
+        JobMatchResponse response = service.matchPasted(1L,
+                new JobMatchRequest("Engineer", null, DESCRIPTION, null, null, null));
+
+        assertThat(response.match()).isSameAs(computed);
+        assertThat(response.message()).isEqualTo("Matched against your base resume.");
+        assertThat(response.job().id()).isEqualTo(9L);
+    }
+
+    @Test
     void matchSavesAManualJobWithTrimmedFieldsAndANullMatch() {
         when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile(5L)));
         stubSave();
@@ -105,7 +129,7 @@ class JobServiceTest {
         verify(companies, never()).save(any());
 
         assertThat(response.match()).isNull();
-        assertThat(response.message()).isEqualTo("Matching is not available yet; your job is saved.");
+        assertThat(response.message()).isEqualTo("Upload a resume to see your match.");
         assertThat(response.job().id()).isEqualTo(9L);
         assertThat(response.job().companyName()).isNull();
         assertThat(response.job().description()).isEqualTo("Build and run backend services in Java.");
@@ -276,9 +300,9 @@ class JobServiceTest {
     @Test
     void facetsForScrapedScopeNeverLookUpTheProfile() {
         JobFacets expected = new JobFacets(List.of(new FacetValue("Sales", 2)), List.of(), List.of(), List.of());
-        when(jobSearch.facets(null, JobScope.SCRAPED, "Germany", null)).thenReturn(expected);
+        when(jobSearch.facets(null, JobScope.SCRAPED, GERMANY, null)).thenReturn(expected);
 
-        assertThat(service.facets(1L, JobScope.SCRAPED, "Germany", null)).isSameAs(expected);
+        assertThat(service.facets(1L, JobScope.SCRAPED, GERMANY)).isSameAs(expected);
         verify(profiles, never()).findByUserId(any());
     }
 
@@ -286,17 +310,17 @@ class JobServiceTest {
     void facetsForPastedScopeUseTheCallersProfileOnly() {
         JobFacets expected = new JobFacets(List.of(), List.of(), List.of(), List.of());
         when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile(5L)));
-        when(jobSearch.facets(5L, JobScope.PASTED, null, null)).thenReturn(expected);
+        when(jobSearch.facets(5L, JobScope.PASTED, JobFilter.NONE, null)).thenReturn(expected);
 
-        assertThat(service.facets(1L, JobScope.PASTED, null, null)).isSameAs(expected);
+        assertThat(service.facets(1L, JobScope.PASTED, JobFilter.NONE)).isSameAs(expected);
     }
 
     @Test
     void facetsForPastedScopeWithoutAProfilePassANullProfile() {
         when(profiles.findByUserId(1L)).thenReturn(Optional.empty());
-        when(jobSearch.facets(null, JobScope.PASTED, null, null))
+        when(jobSearch.facets(null, JobScope.PASTED, JobFilter.NONE, null))
                 .thenReturn(new JobFacets(List.of(), List.of(), List.of(), List.of()));
 
-        assertThat(service.facets(1L, JobScope.PASTED, null, null).countries()).isEmpty();
+        assertThat(service.facets(1L, JobScope.PASTED, JobFilter.NONE).countries()).isEmpty();
     }
 }

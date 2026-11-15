@@ -38,7 +38,7 @@ export default function TrackJobButton({ jobId, jobTitle, onTracked }) {
         <Button
           variant="secondary"
           loading={state === 'saving'}
-          loadingText="Tracking…"
+          loadingText="Trackingï¿½"
           onClick={track}
           aria-label={`Track this job: ${jobTitle || 'this job'}`}
         >

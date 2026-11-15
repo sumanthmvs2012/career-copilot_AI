@@ -1,5 +1,10 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router-dom';
+import Alert from './Alert';
+import Button from './Button';
+import MatchResult from './MatchResult';
 import TrackJobButton from './TrackJobButton';
+import { getStoredMatch, matchJob } from '../services/jobService';
 import { formatLocations } from '../utils/jobFilters';
 import { describeJobTime, safeHttpUrl, sourceLabel } from '../utils/relativeTime';
 
@@ -12,16 +17,47 @@ function chipSlot(category) {
   return hash;
 }
 
-// match is null until the AI module ships (Phase 5); then it carries {score, ...}.
+// job.match, when given, is a result already computed (see MatchResult); otherwise the user can run
+// one with "Match with my resume", and a stored one is loaded the first time the details expand.
 export default function JobDetails({ job, compact = false, onTracked }) {
   const descriptionId = useId();
   const [open, setOpen] = useState(false);
+  const [match, setMatch] = useState(job.match ?? null);
+  const [matchState, setMatchState] = useState('idle'); // idle | loading | no-resume | error
+  const [storedChecked, setStoredChecked] = useState(false);
   const details = [job.companyName, formatLocations(job), REMOTE_LABELS[job.remoteType]]
     .filter(Boolean)
     .join(' · ');
   const source = sourceLabel(job.source);
   const time = describeJobTime(job);
   const postingUrl = safeHttpUrl(job.sourceUrl);
+
+  async function loadStored() {
+    setStoredChecked(true);
+    try {
+      const stored = await getStoredMatch(job.id);
+      if (stored) setMatch((current) => current ?? stored);
+    } catch (error) {
+      // A missing stored result is normal; status only, never log text.
+      console.error('Loading stored match failed', { status: error?.status ?? 'unknown' });
+    }
+  }
+
+  function toggle() {
+    if (!open && !compact && job.id != null && !match && !storedChecked) loadStored();
+    setOpen((value) => !value);
+  }
+
+  async function runMatch() {
+    setMatchState('loading');
+    try {
+      setMatch(await matchJob(job.id));
+      setMatchState('idle');
+    } catch (error) {
+      console.error('Matching job failed', { status: error?.status ?? 'unknown' });
+      setMatchState(error?.status === 409 ? 'no-resume' : 'error');
+    }
+  }
 
   return (
     <div className={compact ? 'job-item job-item--compact' : 'job-item'}>
@@ -33,7 +69,11 @@ export default function JobDetails({ job, compact = false, onTracked }) {
       <div className="job-item__meta muted">
         {source && <span className="job-item__source">{source}</span>}
         {time && (
-          <time className="job-item__time" dateTime={job.postedAt || job.createdAt} title={time.title}>
+          <time
+            className="job-item__time"
+            dateTime={job.postedAt || job.createdAt}
+            title={time.title}
+          >
             {time.label}
           </time>
         )}
@@ -49,12 +89,27 @@ export default function JobDetails({ job, compact = false, onTracked }) {
           View posting
         </a>
       )}
-      {!compact &&
-        (job.match ? (
-          <p className="job-item__match">Match score: {job.match.score}</p>
-        ) : (
-          <p className="job-item__match muted">Match with your base resume: coming soon</p>
-        ))}
+      {!compact && job.id != null && (
+        <div className="job-item__match">
+          <Button
+            variant="secondary"
+            onClick={runMatch}
+            loading={matchState === 'loading'}
+            loadingText="Matching…"
+          >
+            {match ? 'Match again' : 'Match with my resume'}
+          </Button>
+          {matchState === 'no-resume' && (
+            <Alert variant="warning">
+              Upload a resume first to see your match. <Link to="/resume">Go to your resumes</Link>
+            </Alert>
+          )}
+          {matchState === 'error' && (
+            <Alert variant="error">We could not match this job. Please try again.</Alert>
+          )}
+          {match && <MatchResult match={match} />}
+        </div>
+      )}
       {job.id != null && (
         <TrackJobButton jobId={job.id} jobTitle={job.title} onTracked={onTracked} />
       )}
@@ -65,7 +120,7 @@ export default function JobDetails({ job, compact = false, onTracked }) {
             className="job-item__toggle"
             aria-expanded={open}
             aria-controls={descriptionId}
-            onClick={() => setOpen((value) => !value)}
+            onClick={toggle}
           >
             {open ? 'Hide description' : 'Show description'}
           </button>

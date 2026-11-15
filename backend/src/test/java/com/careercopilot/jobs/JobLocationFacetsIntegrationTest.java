@@ -308,6 +308,88 @@ class JobLocationFacetsIntegrationTest {
     }
 
     @Test
+    void categoryNarrowsCountriesStatesAndCitiesButNotItself() throws Exception {
+        seed();
+
+        assertThat(facet(jane, "?category=design", "countries")).containsExactly("United States:1");
+        assertThat(facet(jane, "?category=design", "states")).containsExactly("Texas:1");
+        assertThat(facet(jane, "?category=Design", "cities")).containsExactly("Austin:1");
+        assertThat(facet(jane, "?category=Design", "categories"))
+                .containsExactly("Software Engineering:3", "Design:1", "Sales:1");
+        assertThat(facet(jane, "?category=Software%20Engineering", "countries"))
+                .containsExactly("Germany:1", "United Kingdom:1", "United States:1");
+        assertThat(facet(jane, "?category=Sales", "states")).containsExactly("Maine:1", "Oregon:1");
+    }
+
+    @Test
+    void countryNarrowsCategoriesStatesAndCitiesButNotItself() throws Exception {
+        seed();
+
+        assertThat(facet(jane, "?country=Germany", "categories")).containsExactly("Software Engineering:1");
+        assertThat(facet(jane, "?country=united%20states", "categories"))
+                .containsExactly("Design:1", "Sales:1", "Software Engineering:1");
+        assertThat(facet(jane, "?country=Germany", "cities")).containsExactly("Berlin:1");
+        assertThat(facet(jane, "?country=Germany", "countries"))
+                .containsExactly("United States:3", "Germany:1", "United Kingdom:1");
+    }
+
+    @Test
+    void stateAndCityNarrowTheOtherListsOnTheSameLocationRow() throws Exception {
+        seed();
+
+        assertThat(facet(jane, "?state=texas", "cities")).containsExactly("Austin:2");
+        assertThat(facet(jane, "?state=texas", "countries")).containsExactly("United States:2");
+        assertThat(facet(jane, "?state=texas", "categories")).containsExactly("Design:1", "Software Engineering:1");
+        // Its own dimension is ignored, so other states stay selectable.
+        assertThat(facet(jane, "?state=texas", "states")).containsExactly("Texas:2", "Maine:1", "Oregon:1");
+        assertThat(facet(jane, "?city=Austin", "states")).containsExactly("Texas:2");
+        assertThat(facet(jane, "?city=Portland", "states")).containsExactly("Maine:1", "Oregon:1");
+        assertThat(facet(jane, "?country=United%20States&category=Software%20Engineering", "cities"))
+                .containsExactly("Austin:1");
+    }
+
+    @Test
+    void facetsAlsoHonourTheOtherListFilters() throws Exception {
+        seed();
+
+        assertThat(facet(jane, "?q=designer", "categories")).containsExactly("Design:1");
+        assertThat(facet(jane, "?q=designer", "countries")).containsExactly("United States:1");
+        scraped("Old Marketer", "Marketing", 40, place("Rome", null, "Italy"));
+        assertThat(facet(jane, "", "categories")).contains("Marketing:1");
+        assertThat(facet(jane, "?postedWithin=30", "categories")).noneMatch(value -> value.startsWith("Marketing"));
+        assertThat(facet(jane, "?postedWithin=30", "countries")).noneMatch(value -> value.startsWith("Italy"));
+        assertThat(facet(jane, "?source=lever", "categories")).isEmpty();
+        assertThat(facet(jane, "?remoteType=remote", "countries")).isEmpty();
+    }
+
+    @Test
+    void facetsRejectInvalidListFilters() throws Exception {
+        for (String bad : new String[] {"?category=Astronaut", "?category=", "?q=", "?q=" + "a".repeat(101),
+                "?source=bogus", "?remoteType=moon", "?postedWithin=5", "?location=", "?city=", "?city=%20"}) {
+            mvc.perform(get(URI.create("/jobs/facets" + bad)).header("Authorization", jane))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+    }
+
+    @Test
+    void crossFilteredFacetsNeverLeakAnotherUsersPastedJobs() throws Exception {
+        seed();
+        paste(john, "Johns Secret Engineer", "Paris, France");
+
+        for (String query : new String[] {"?category=Software%20Engineering", "?country=France",
+                "?scope=pasted&category=Software%20Engineering", "?scope=pasted&country=France", "?q=secret"}) {
+            for (String group : new String[] {"categories", "countries", "states", "cities"}) {
+                assertThat(facet(jane, query, group)).as("jane " + query + " " + group)
+                        .noneMatch(value -> value.startsWith("France") || value.startsWith("Paris"));
+            }
+        }
+        assertThat(facet(jane, "?scope=pasted&country=France", "categories")).isEmpty();
+        assertThat(facet(john, "?scope=pasted&country=France", "categories")).containsExactly("Software Engineering:1");
+        assertThat(facet(john, "?scope=pasted&category=Software%20Engineering", "cities")).containsExactly("Paris:1");
+    }
+
+    @Test
     void facetsNeedAToken() throws Exception {
         mvc.perform(get("/jobs/facets")).andExpect(status().isUnauthorized());
     }

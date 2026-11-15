@@ -1,6 +1,13 @@
 import { get, post } from './apiClient';
 import { clearToken } from '../utils/authToken';
-import { isMockJobsEnabled, mockJobFacets, mockListJobs, mockMatchJob } from './mockJobs';
+import {
+  isMockJobsEnabled,
+  mockGetStoredMatch,
+  mockJobFacets,
+  mockListJobs,
+  mockMatchJobById,
+  mockMatchPastedJob,
+} from './mockJobs';
 
 // A 401 means the token is missing or expired, so drop it here; pages then redirect to /login.
 async function withAuthHandling(call) {
@@ -18,9 +25,16 @@ function optional(value) {
   return trimmed || undefined;
 }
 
-// Resolves {job, match, message}; match is null until the AI module ships.
+// Resolves {job, match, message}; match is null (with a message) when there is no base resume.
 // Rejects with an ApiError: 404 means no profile yet, 400 carries data.fieldErrors.
-export function matchJob({ title, companyName, location, remoteType, sourceUrl, description }) {
+export function matchPastedJob({
+  title,
+  companyName,
+  location,
+  remoteType,
+  sourceUrl,
+  description,
+}) {
   const body = {
     title: optional(title),
     companyName: optional(companyName),
@@ -30,7 +44,7 @@ export function matchJob({ title, companyName, location, remoteType, sourceUrl, 
     sourceUrl: optional(sourceUrl),
   };
   return withAuthHandling(() =>
-    isMockJobsEnabled() ? mockMatchJob(body) : post('/jobs/match', body),
+    isMockJobsEnabled() ? mockMatchPastedJob(body) : post('/jobs/match', body),
   );
 }
 
@@ -78,16 +92,57 @@ export function listJobs({
 }
 
 // Resolves {categories, countries, states, cities}, each [{value, count}] most common first.
-// country/state narrow states and cities (cascading dropdowns). Empty values are never sent.
-export function getJobFacets({ scope = 'scraped', country, state } = {}) {
-  const filters = { scope: optional(scope), country: optional(country), state: optional(state) };
+// Accepts every filter listJobs does (except paging); each list is computed server-side with all
+// active filters applied except its own dimension. Empty values are never sent.
+export function getJobFacets({
+  scope = 'scraped',
+  q,
+  category,
+  source,
+  remoteType,
+  location,
+  postedWithin,
+  country,
+  state,
+  city,
+} = {}) {
+  const filters = {
+    scope: optional(scope),
+    q: optional(q),
+    category: optional(category),
+    source: optional(source),
+    remoteType: optional(remoteType),
+    location: optional(location),
+    postedWithin: postedWithin ? String(postedWithin) : undefined,
+    country: optional(country),
+    state: optional(state),
+    city: optional(city),
+  };
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
   }
   return withAuthHandling(() =>
-    isMockJobsEnabled()
-      ? mockJobFacets(filters)
-      : get(`/jobs/facets?${params.toString()}`),
+    isMockJobsEnabled() ? mockJobFacets(filters) : get(`/jobs/facets?${params.toString()}`),
   );
+}
+
+// Resolves the match result for a job the caller can see, saving it (replaces any earlier one).
+// Rejects with an ApiError: 409 means no base resume yet, 404 an unknown job or no profile.
+export function matchJob(id) {
+  return withAuthHandling(() =>
+    isMockJobsEnabled() ? mockMatchJobById(id) : post(`/jobs/${encodeURIComponent(id)}/match`),
+  );
+}
+
+// Resolves the stored match result for a job, or null when none exists yet (404).
+export async function getStoredMatch(id) {
+  try {
+    return await withAuthHandling(() =>
+      isMockJobsEnabled() ? mockGetStoredMatch(id) : get(`/jobs/${encodeURIComponent(id)}/match`),
+    );
+  } catch (error) {
+    if (error?.status === 404) return null;
+    throw error;
+  }
 }

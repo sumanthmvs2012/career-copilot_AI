@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,11 +59,108 @@ describe('JobFilters', () => {
     await user.selectOptions(screen.getByLabelText('Country'), 'Canada');
     expect(screen.getByLabelText('State')).toBeEnabled();
     expect(screen.getByLabelText('City')).toBeEnabled();
-    expect(getJobFacets).toHaveBeenLastCalledWith({
-      scope: 'pasted',
-      country: 'Canada',
-      state: '',
+    await waitFor(() =>
+      expect(getJobFacets).toHaveBeenLastCalledWith({
+        scope: 'pasted',
+        category: '',
+        country: 'Canada',
+        state: '',
+        city: '',
+      }),
+    );
+  });
+
+  it('shows Select a country first on a disabled State until a country is chosen', async () => {
+    render(<Harness />);
+    await screen.findByRole('option', { name: 'Canada (10)' });
+    expect(screen.getByLabelText('State')).toBeDisabled();
+    expect(screen.getAllByRole('option', { name: 'Select a country first' })).toHaveLength(2);
+  });
+
+  it('refetches with every active filter, debouncing the text inputs', async () => {
+    const place = { ...EMPTY_PLACE_FILTERS, category: 'Software Engineering' };
+    const others = { location: '', source: 'lever', remoteType: 'remote', postedWithin: '7' };
+    const { rerender } = render(
+      <JobFilters value={place} onChange={() => {}} others={{ ...others, q: 'eng' }} />,
+    );
+    await waitFor(() =>
+      expect(getJobFacets).toHaveBeenCalledWith({
+        scope: 'scraped',
+        q: 'eng',
+        source: 'lever',
+        remoteType: 'remote',
+        postedWithin: '7',
+        category: 'Software Engineering',
+        country: '',
+        state: '',
+        city: '',
+      }),
+    );
+    const calls = vi.mocked(getJobFacets).mock.calls.length;
+    rerender(<JobFilters value={place} onChange={() => {}} others={{ ...others, q: 'engi' }} />);
+    expect(getJobFacets).toHaveBeenCalledTimes(calls);
+    await waitFor(() => expect(getJobFacets).toHaveBeenCalledTimes(calls + 1));
+    expect(vi.mocked(getJobFacets).mock.calls.at(-1)[0].q).toBe('engi');
+  });
+
+  it('narrows the countries when a category is chosen', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getJobFacets).mockImplementation(async ({ category }) => ({
+      ...FACETS,
+      countries: category ? [{ value: 'Canada', count: 2 }] : FACETS.countries,
+    }));
+    render(<Harness />);
+    await screen.findByRole('option', { name: 'United States (90)' });
+    await user.selectOptions(screen.getByLabelText('Category'), 'Software Engineering');
+    await waitFor(() =>
+      expect(screen.queryByRole('option', { name: 'United States (90)' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('option', { name: 'Canada (2)' })).toBeInTheDocument();
+  });
+
+  it("shows only the chosen country's states and cities", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getJobFacets).mockImplementation(async ({ country }) => ({
+      ...FACETS,
+      states: country === 'Canada' ? [{ value: 'ON', count: 7 }] : [{ value: 'CA', count: 50 }],
+      cities: country === 'Canada' ? [{ value: 'Toronto', count: 7 }] : FACETS.cities,
+    }));
+    render(<Harness />);
+    await screen.findByRole('option', { name: 'Canada (10)' });
+    await user.selectOptions(screen.getByLabelText('Country'), 'Canada');
+    expect(await screen.findByRole('option', { name: 'ON (7)' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'CA (50)' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Toronto (7)' })).toBeInTheDocument();
+    expect(screen.getByLabelText('State')).toBeEnabled();
+  });
+
+  it('clears a selected value that disappears from the refreshed options', async () => {
+    const spy = vi.fn();
+    vi.mocked(getJobFacets).mockResolvedValue({
+      ...FACETS,
+      states: [{ value: 'CA', count: 5 }],
+      cities: [],
     });
+    render(
+      <Harness
+        spy={spy}
+        initial={{
+          category: 'Software Engineering',
+          country: 'United States',
+          state: 'CA',
+          city: 'Oakland',
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({
+        category: 'Software Engineering',
+        country: 'United States',
+        state: 'CA',
+        city: '',
+      }),
+    );
+    expect(screen.getByLabelText('State')).toHaveValue('CA');
   });
 
   it('resets state and city when the country changes and city when the state changes', async () => {
@@ -73,7 +170,7 @@ describe('JobFilters', () => {
       <Harness
         spy={spy}
         initial={{
-          category: 'Design',
+          category: 'Software Engineering',
           country: 'United States',
           state: 'CA',
           city: 'San Francisco',
@@ -84,7 +181,7 @@ describe('JobFilters', () => {
 
     await user.selectOptions(screen.getByLabelText('State'), '');
     expect(spy).toHaveBeenLastCalledWith({
-      category: 'Design',
+      category: 'Software Engineering',
       country: 'United States',
       state: '',
       city: '',
@@ -92,7 +189,7 @@ describe('JobFilters', () => {
 
     await user.selectOptions(screen.getByLabelText('Country'), 'Canada');
     expect(spy).toHaveBeenLastCalledWith({
-      category: 'Design',
+      category: 'Software Engineering',
       country: 'Canada',
       state: '',
       city: '',
