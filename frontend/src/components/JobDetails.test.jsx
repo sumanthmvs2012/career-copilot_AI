@@ -85,7 +85,12 @@ describe('JobDetails', () => {
   it('is compact on request, with no match line, and omits the toggle without a description', () => {
     render(<JobDetails job={{ ...JOB, description: undefined }} compact />);
     expect(screen.queryByText(/coming soon/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show description/ })).not.toBeInTheDocument();
+  });
+
+  it('offers a Track this job button for jobs with an id', () => {
+    render(<JobDetails job={JOB} />);
+    expect(screen.getByRole('button', { name: /Track this job/ })).toBeInTheDocument();
   });
 
   it('links to the posting in a new tab for http and https URLs', () => {

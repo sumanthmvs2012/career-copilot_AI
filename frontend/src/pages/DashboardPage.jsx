@@ -5,14 +5,25 @@ import Avatar from '../components/Avatar';
 import Button from '../components/Button';
 import JobDetails from '../components/JobDetails';
 import JobFilters from '../components/JobFilters';
+import Select from '../components/Select';
 import StatusBadge from '../components/StatusBadge';
-import { isMockApplications, listApplications } from '../services/applicationsService';
+import {
+  APPLICATION_STATUSES,
+  isMockApplications,
+  listApplications,
+  updateApplication,
+} from '../services/applicationsService';
 import { listJobs } from '../services/jobService';
 import { listResumes } from '../services/resumeService';
 import { getProfile } from '../services/profileService';
 import { EMPTY_PLACE_FILTERS } from '../utils/jobFilters';
 import { clearToken } from '../utils/authToken';
 import { formatRelativeTime } from '../utils/relativeTime';
+
+const STATUS_OPTIONS = APPLICATION_STATUSES.map((value) => ({
+  value,
+  label: value.charAt(0).toUpperCase() + value.slice(1),
+}));
 
 const APPLICATION_COLUMNS = ['Job', 'Status', 'Applied', 'Email sent', 'When'];
 
@@ -92,7 +103,7 @@ function ResumeCard({ state, resume, count, onRetry }) {
   );
 }
 
-function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry }) {
+function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry, onTracked }) {
   const filtered = Object.values(filters).some(Boolean);
   return (
     <section className="card" aria-labelledby="latest-jobs-heading">
@@ -122,7 +133,7 @@ function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry }) {
         <ul className="job-list job-list--latest">
           {jobs.map((job) => (
             <li key={job.id}>
-              <JobDetails job={job} />
+              <JobDetails job={job} onTracked={onTracked} />
             </li>
           ))}
         </ul>
@@ -135,7 +146,64 @@ function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry }) {
   );
 }
 
-function ApplicationsSection({ state, applications, onRetry }) {
+function ApplicationRow({ app, onUnauthorized }) {
+  const [row, setRow] = useState(app);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Keep the row in step when the list is reloaded.
+  useEffect(() => {
+    setRow(app);
+  }, [app]);
+
+  async function changeStatus(event) {
+    const status = event.target.value;
+    setSaving(true);
+    setError('');
+    try {
+      setRow(await updateApplication(app.id, { status }));
+    } catch (err) {
+      if (err?.status === 401) return onUnauthorized();
+      // Status only: never log tokens or text.
+      console.error('Updating application failed', { status: err?.status ?? 'unknown' });
+      setError('We could not save the status. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td>
+        <span className="app-job__title">{row.jobTitle}</span>
+        {row.company && <span className="app-job__company">{row.company}</span>}
+      </td>
+      <td>
+        <StatusBadge status={row.status} />
+        <Select
+          label={`Change status for ${row.jobTitle}`}
+          options={STATUS_OPTIONS}
+          value={row.status}
+          disabled={saving}
+          onChange={changeStatus}
+        />
+        {saving && <span role="status" className="muted">Saving…</span>}
+        {error && <Alert variant="error">{error}</Alert>}
+      </td>
+      <td>{row.appliedAt ? new Date(row.appliedAt).toLocaleDateString() : ''}</td>
+      <td>
+        <span className={`email-flag ${row.emailSent ? 'email-flag--yes' : ''}`}>
+          {row.emailSent ? 'Yes' : 'No'}
+        </span>
+      </td>
+      <td title={row.emailSentAt ? new Date(row.emailSentAt).toLocaleString() : undefined}>
+        {formatRelativeTime(row.emailSentAt)}
+      </td>
+    </tr>
+  );
+}
+
+function ApplicationsSection({ state, applications, onRetry, onUnauthorized }) {
   return (
     <section className="card" aria-labelledby="applications-heading">
       <div className="card__head">
@@ -169,26 +237,7 @@ function ApplicationsSection({ state, applications, onRetry }) {
             </thead>
             <tbody>
               {applications.map((app) => (
-                <tr key={app.id}>
-                  <td>
-                    <span className="app-job__title">{app.jobTitle}</span>
-                    {app.company && <span className="app-job__company">{app.company}</span>}
-                  </td>
-                  <td>
-                    <StatusBadge status={app.status} />
-                  </td>
-                  <td>{app.appliedAt ? new Date(app.appliedAt).toLocaleDateString() : ''}</td>
-                  <td>
-                    <span className={`email-flag ${app.emailSent ? 'email-flag--yes' : ''}`}>
-                      {app.emailSent ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td
-                    title={app.emailSentAt ? new Date(app.emailSentAt).toLocaleString() : undefined}
-                  >
-                    {formatRelativeTime(app.emailSentAt)}
-                  </td>
-                </tr>
+                <ApplicationRow key={app.id} app={app} onUnauthorized={onUnauthorized} />
               ))}
             </tbody>
           </table>
@@ -318,11 +367,13 @@ export default function DashboardPage() {
           filters={latestFilters}
           onFiltersChange={setLatestFilters}
           onRetry={loadLatestJobs}
+          onTracked={loadApplications}
         />
         <ApplicationsSection
           state={appsState}
           applications={applications}
           onRetry={loadApplications}
+          onUnauthorized={goToLogin}
         />
       </div>
     </main>

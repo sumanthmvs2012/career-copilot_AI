@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import TrackJobButton from './TrackJobButton';
 import { formatLocations } from '../utils/jobFilters';
 import { describeJobTime, safeHttpUrl, sourceLabel } from '../utils/relativeTime';
 
@@ -12,7 +13,7 @@ function chipSlot(category) {
 }
 
 // match is null until the AI module ships (Phase 5); then it carries {score, ...}.
-export default function JobDetails({ job, compact = false }) {
+export default function JobDetails({ job, compact = false, onTracked }) {
   const descriptionId = useId();
   const [open, setOpen] = useState(false);
   const details = [job.companyName, formatLocations(job), REMOTE_LABELS[job.remoteType]]
@@ -54,6 +55,9 @@ export default function JobDetails({ job, compact = false }) {
         ) : (
           <p className="job-item__match muted">Match with your base resume: coming soon</p>
         ))}
+      {job.id != null && (
+        <TrackJobButton jobId={job.id} jobTitle={job.title} onTracked={onTracked} />
+      )}
       {job.description && (
         <>
           <button

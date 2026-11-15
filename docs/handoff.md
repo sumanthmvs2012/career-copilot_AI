@@ -4,7 +4,7 @@ To continue in a new Claude session (VS Code, terminal or the desktop app), past
 
 > Read AGENTS.md, docs/handoff.md and docs/plan.md, then continue the project from "Next steps" in handoff.md.
 
-Last updated: 2026-11-15 (session 2 complete; see "Session 2 outcome").
+Last updated: 2026-11-15 (session 4: Applications done; see "Session 4 addendum" at the end).
 
 ## Project
 
@@ -42,7 +42,7 @@ Source of truth: the root docs (PRD, ARCHITECTURE, DATABASE, DESIGN_SYSTEM, SECU
 - Git repo on `main`. One commit (`7514ac1`: docs, plan, login page). Everything below is **uncommitted**.
 - **Frontend** (`frontend/`):
   - Login, sign-up, dashboard, profile and resume pages are done. `/dashboard`, `/profile` and `/resume` redirect to `/login` without a token (`components/RequireAuth.jsx`); a 401 clears the token and redirects.
-  - Dashboard: profile card (links to `/profile` when there is no profile yet), resume card (links to `/resume`; shows file name and date once uploaded) and an Applications table with the PRD columns (Job, Status, Applied, Email sent, When). The table reads from `services/applicationsService.js`, a stub that returns `[]` until the applications API exists; its comment gives the row shape it expects.
+  - Dashboard: profile card (links to `/profile` when there is no profile yet), resume card (links to `/resume`; shows file name and date once uploaded) and an Applications table with the PRD columns (Job, Status, Applied, Email sent, When). The table reads the real `GET /applications` through `services/applicationsService.js` (mock only when `VITE_USE_MOCK_APPLICATIONS=true`, dev only).
   - Resume page (`/resume`): file input (PDF/DOCX, 5 MB, checked client-side first), upload/replace, shows "Text extracted" when `textLength > 0`. `apiClient.js` has an `upload(path, formData)` helper that leaves Content-Type to the browser.
   - Profile page: full name (required), headline, location, "Open to remote work", "Auto-submit applications" (off by default, with a note). Maps `fieldErrors` from a 400 onto the fields.
   - `apiClient.js` adds `Authorization: Bearer <token>` whenever a token exists and exports `get`, `post`, `put`.
@@ -85,10 +85,13 @@ Decisions made this session (also in docs/plan.md 1.4 items 5–6): pasted jobs 
 
 To run everything locally: start Docker Desktop, then in `backend/` run `docker compose up -d` and `mvn spring-boot:run`; in `frontend/` run `npm run dev` and open http://localhost:5173. `backend/.env` already exists on this machine.
 
-1. Browser-check `/resume` (two uploads, third refused, delete) and `/match` (paste a description → "Job saved" with the placeholder note; the job appears in "Your pasted jobs" and in the dashboard Jobs card). Then update this file's "Current state" with the final test counts.
-2. Applications: `applications` migration, `POST/GET /applications`, `PUT /applications/{id}`, and wire the dashboard table to the real list (replace the `applicationsService` stub). Status values: draft, applied, interviewing, offer, rejected, withdrawn (DATABASE.md).
-3. Phase 5 prep: the Phase 5 migration adds `resumes.skills`, `resumes.embedding` and `jobs.embedding`, and moves the backend tests to Testcontainers with pgvector (Docker is available on this machine). Then the real `POST /jobs/match` result replaces the placeholder.
-4. Set up GitHub Actions CI once the user's GitHub repo exists.
+Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails with "failed to find the current suite" (path casing).
+
+1. Phase 5 prep: the Phase 5 migration adds `resumes.skills`, `resumes.embedding` and `jobs.embedding`, and moves the backend tests to Testcontainers with pgvector (Docker is available on this machine). Then the real `POST /jobs/match` result replaces the placeholder (score, missing and almost-matched skills, keywords, headline, location fit).
+2. Email tracking: `email_logs` table and Gmail read-only OAuth; the dashboard "Email sent / When" columns are false/null until then.
+3. Resume tailoring, suggestions, interview questions, and the agent that writes drafts (drafts are applications rows with status "draft").
+4. Set up GitHub Actions CI on `feature_v1`.
+5. Fix AGENTS.md Part two wording (root docs are at the repo root, not in `docs/`).
 
 ## Session 3 addendum (2026-11-15): job scraper
 - Built `jobs/scraper/` (JobSource, GreenhouseJobSource, LeverJobSource, JobScraperService, hourly JobScraperScheduler, off unless `SCRAPER_ENABLED=true`). `backend/.env` (local, gitignored) now has `SCRAPER_ENABLED=true` and `SCRAPER_BOARDS=greenhouse:stripe,lever:palantir`. Live run stored 400 postings (200 per board). Idempotent re-run verified by tests only, not yet live.
@@ -104,3 +107,11 @@ To run everything locally: start Docker Desktop, then in `backend/` run `docker 
 - Known parser limits: "City, X, Country" reads X as a state (e.g. Atlanta shows up as a US state); regions outside US/CA need a following country; "Bay Area" becomes city "Bay"; rows with no parsable location only match the free-text location filter. Category from department first (Greenhouse departments, Lever team), then title.
 - Dashboard: removed the small pasted-jobs card (Latest jobs links to /jobs and /match); Applications table shows 10 dummy rows when `VITE_USE_MOCK_APPLICATIONS=true` (frontend/.env, dev only, "Demo data" badge).
 - Counts: backend 395 tests, frontend 244 tests; lint and build pass. Nothing committed.
+
+## Session 4 addendum (2026-11-15): Applications + GitHub
+- Browser-checked on real Postgres: dashboard look, `/resume` (two uploads, upload disabled at 2, delete frees a slot), `/match` (job saved with the placeholder note).
+- Applications built: `V6__create_applications.sql` (UNIQUE profile+job, status CHECK, submitted_by user/auto), `applications/` module (`POST/GET /applications`, `PUT /applications/{id}`, 409 "You already track this job.", ownership via the JWT subject, no N+1), a "Track this job" button on every job card, and a status dropdown per dashboard row. Verified in the browser: tracking a pasted job, then changing it to Applied, stored `applied` with a submitted date.
+- Counts: backend 425 tests, frontend 255 tests (23 files); lint and build pass.
+- `frontend/.env` (local, gitignored) now has `VITE_USE_MOCK_APPLICATIONS=false`; restart Vite after changing env values.
+- GitHub: remote `origin` = https://github.com/sumanthmvs2012/career-copilot_AI.git. **Push only to `feature_v1`, never `main`** (remote `main` is a single empty commit on purpose). Commit and push only when the user says so.
+- Not done yet: `POST /applications/{id}/submit`, cover letters in the UI, email tracking.

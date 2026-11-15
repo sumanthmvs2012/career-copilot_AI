@@ -25,6 +25,7 @@ Spring Boot 4.1 (Java 21) modular monolith. See `../ARCHITECTURE.md` and `../doc
 - `auth/`: sign up, log in, users, JWT.
 - `profiles/`: the signed-in user's profile (GET and PUT `/profile`).
 - `resumes/`: resume upload, read and delete (POST and GET `/resumes`, GET and DELETE `/resumes/{id}`). PDF or DOCX, 5 MB max. A profile keeps at most 2 uploaded resumes (a third upload returns 409); the newest upload is the base resume, and deleting the base promotes the newest remaining one. Files are saved under `RESUME_STORAGE_DIR` (default `./storage`) through `common/storage`.
+- `applications/`: job tracking. POST `/applications` (201; body `{jobId, resumeId?, status?, coverLetter?}`, status draft or applied, cover letter up to 10000 chars), GET `/applications` (caller's own, newest first, jobs and companies loaded in batch) and PUT `/applications/{id}` (`{status?, coverLetter?}`, at least one; status draft, applied, interviewing, offer, rejected or withdrawn). The job must be a scraped job or the caller's own pasted job and the resume must be the caller's, else 404; a second application for the same job returns 409 "You already track this job." (also on a race, via the unique constraint). Moving to applied sets `appliedAt` once. `emailSent` is false and `emailSentAt` null until email tracking ships.
 - `common/config`: security, CORS, password encoder.
 - `common/web`: global error handler and error shape.
 - `common/storage`: `StorageService` and its local-disk implementation.

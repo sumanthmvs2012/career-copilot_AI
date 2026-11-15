@@ -1,5 +1,7 @@
 package com.careercopilot.common.web;
 
+import com.careercopilot.applications.ApplicationAlreadyExistsException;
+import com.careercopilot.applications.ApplicationNotFoundException;
 import com.careercopilot.auth.EmailAlreadyUsedException;
 import com.careercopilot.auth.InvalidCredentialsException;
 import com.careercopilot.auth.PasswordTooLongException;
@@ -94,6 +96,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResumeUnreadableException.class)
     ResponseEntity<ErrorResponse> handleResumeUnreadable(ResumeUnreadableException ex) {
         return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "We could not read text from this file."));
+    }
+
+    @ExceptionHandler(ApplicationNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleApplicationNotFound(ApplicationNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Application or job not found."));
+    }
+
+    @ExceptionHandler(ApplicationAlreadyExistsException.class)
+    ResponseEntity<ErrorResponse> handleApplicationExists(ApplicationAlreadyExistsException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "You already track this job."));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

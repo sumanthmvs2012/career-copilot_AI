@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, get, put } from './apiClient';
-import { listApplications } from './applicationsService';
 import { mockGetProfile, mockUpdateProfile, resetMockProfile } from './mockProfile';
 import { getProfile, updateProfile } from './profileService';
 import { clearToken, getToken, setToken } from '../utils/authToken';
@@ -155,11 +154,5 @@ describe('mockProfile', () => {
   it('returns 401 without a token', async () => {
     clearToken();
     expect((await settle(mockGetProfile())).status).toBe(401);
-  });
-});
-
-describe('applicationsService', () => {
-  it('returns an empty list until the API exists', async () => {
-    await expect(listApplications()).resolves.toEqual([]);
   });
 });

@@ -1,9 +1,15 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardPage from './DashboardPage';
-import { isMockApplications, listApplications } from '../services/applicationsService';
+import {
+  APPLICATION_STATUSES,
+  createApplication,
+  isMockApplications,
+  listApplications,
+  updateApplication,
+} from '../services/applicationsService';
 import { getJobFacets, listJobs } from '../services/jobService';
 import { listResumes } from '../services/resumeService';
 import { getProfile } from '../services/profileService';
@@ -13,7 +19,10 @@ vi.mock('../services/profileService', () => ({ getProfile: vi.fn() }));
 vi.mock('../services/jobService', () => ({ listJobs: vi.fn(), getJobFacets: vi.fn() }));
 vi.mock('../services/resumeService', () => ({ listResumes: vi.fn() }));
 vi.mock('../services/applicationsService', () => ({
+  APPLICATION_STATUSES: ['draft', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'],
   listApplications: vi.fn(),
+  createApplication: vi.fn(),
+  updateApplication: vi.fn(),
   isMockApplications: vi.fn(),
 }));
 
@@ -62,6 +71,8 @@ describe('DashboardPage', () => {
     vi.mocked(getProfile).mockReset();
     vi.mocked(listApplications).mockReset().mockResolvedValue([]);
     vi.mocked(isMockApplications).mockReset().mockReturnValue(false);
+    vi.mocked(createApplication).mockReset();
+    vi.mocked(updateApplication).mockReset();
     vi.mocked(listResumes).mockReset().mockResolvedValue([]);
     vi.mocked(listJobs).mockReset().mockResolvedValue([]);
     vi.mocked(getJobFacets).mockReset().mockResolvedValue(FACETS);
@@ -119,6 +130,62 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yes')).toBeInTheDocument();
     expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Demo data')).not.toBeInTheDocument();
+  });
+
+  describe('application status and tracking', () => {
+    const APP = {
+      id: 7,
+      jobId: 1,
+      jobTitle: 'Engineer',
+      company: 'Acme',
+      status: 'draft',
+      appliedAt: null,
+      emailSent: false,
+      emailSentAt: null,
+    };
+
+    it('lists the six statuses and saves a change through updateApplication', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([APP]);
+      vi.mocked(updateApplication).mockResolvedValue({ ...APP, status: 'interviewing' });
+      const user = renderDashboard();
+
+      const select = await screen.findByLabelText('Change status for Engineer');
+      expect(within(select).getAllByRole('option')).toHaveLength(APPLICATION_STATUSES.length);
+      await user.selectOptions(select, 'interviewing');
+
+      expect(updateApplication).toHaveBeenCalledWith(7, { status: 'interviewing' });
+      await waitFor(() => expect(select).toHaveValue('interviewing'));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('shows a per-row error and keeps the old status when saving fails', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([APP]);
+      vi.mocked(updateApplication).mockRejectedValue(apiError(500));
+      const user = renderDashboard();
+
+      const select = await screen.findByLabelText('Change status for Engineer');
+      await user.selectOptions(select, 'offer');
+
+      expect(await screen.findByText('We could not save the status. Please try again.')).toBeInTheDocument();
+      expect(select).toHaveValue('draft');
+    });
+
+    it('tracks a latest job and reloads the applications table', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listJobs).mockResolvedValue([{ id: 55, title: 'Dev', source: 'lever' }]);
+      vi.mocked(listApplications).mockResolvedValueOnce([]).mockResolvedValue([APP]);
+      vi.mocked(createApplication).mockResolvedValue(APP);
+      const user = renderDashboard();
+
+      await user.click(await screen.findByRole('button', { name: /Track this job/ }));
+
+      expect(createApplication).toHaveBeenCalledWith({ jobId: 55, status: 'draft' });
+      expect(await screen.findByText('Tracked')).toBeInTheDocument();
+      expect(await screen.findByText('Engineer')).toBeInTheDocument();
+    });
   });
 
   it('shows the Demo data badge, statuses, email flags and relative times for mock data', async () => {

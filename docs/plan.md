@@ -108,4 +108,5 @@ frontend/  src/{pages,components,services,utils}
 3. Done: backend auth module, run against local Postgres, frontend switched off the auth mock (`VITE_USE_MOCK_AUTH=false`).
 4. Done: dashboard (early version) and profile page; profiles migration and `GET/PUT /profile`.
 5. Done: resume upload (`resumes` migration, `POST /resumes`, local `StorageService`, text extraction, upload page and dashboard card).
-6. Next: jobs (`companies`/`jobs` migrations, `POST /jobs/match` for pasted descriptions, `GET /jobs`, match page) and applications (`applications` migration, `POST/GET/PUT /applications`, real dashboard table). See docs/handoff.md "Next steps".
+6. Done: jobs (`POST /jobs/match`, `GET /jobs` with filters, match page, scraper) and applications (V6 migration, `POST/GET/PUT /applications`, real dashboard table, "Track this job").
+7. Next: Phase 5 AI (migration, Testcontainers, real match), email tracking, CI. See docs/handoff.md "Next steps".

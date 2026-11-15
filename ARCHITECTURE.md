@@ -32,11 +32,11 @@ Match a pasted job: POST, /jobs/match, body {title?, companyName?, description, 
 
 List jobs: GET, /jobs?scope=pasted|scraped&limit=N, each job has the same fields as the job above (description and postedAt included; postedAt is null for pasted jobs, so the UI shows createdAt as the saved time). scope=pasted returns only the caller's own pasted jobs, scope=scraped only scraped jobs (visible to every signed-in user), no scope returns both. Newest first (postedAt, else createdAt). limit defaults to 50, max 100. Another user's pasted jobs are never returned. Scraped jobs include sourceUrl (the posting link).
 
-Create application: POST, /applications, saves an application.
+Create application: POST, /applications, body {jobId, resumeId?, status?, coverLetter?}. jobId is required and must be a job the caller can see (a scraped job or their own pasted job), else 404. resumeId is optional and must be one of the caller's resumes, else 404. status is "draft" or "applied" (default "draft"); coverLetter is up to 10000 characters. Needs a profile (404 otherwise). One application per job per profile: a second one returns 409 "You already track this job." Setting status "applied" sets submittedAt to now; submittedBy is "user". Returns 201 {id, jobId, jobTitle, company, resumeId, status, coverLetter, appliedAt, submittedBy, emailSent, emailSentAt, createdAt, updatedAt}. appliedAt is submittedAt (null for drafts). emailSent is false and emailSentAt null until email tracking ships (decided 2026-11-15, with the applications table).
 
-List applications: GET, /applications, returns the user's applications, including agent drafts (status "draft").
+List applications: GET, /applications, returns the caller's applications (same shape as above), newest first, including agent drafts (status "draft"). Never another user's.
 
-Update application: PUT, /applications/{id}, changes the status or the cover letter.
+Update application: PUT, /applications/{id}, body {status?, coverLetter?} with at least one field. status is one of draft, applied, interviewing, offer, rejected, withdrawn. Moving to "applied" for the first time sets submittedAt. Returns 200 with the same shape. 404 if it does not exist or belongs to another user; 400 for an invalid status or an empty body.
 
 Submit application: POST, /applications/{id}/submit, submits a draft once the user approves it. If auto-submit is on, the agent calls the same service itself.
 
