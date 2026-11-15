@@ -1,6 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import RequireAuth from './components/RequireAuth';
 import DashboardPage from './pages/DashboardPage';
+import JobsPage from './pages/JobsPage';
 import LoginPage from './pages/LoginPage';
+import MatchJobPage from './pages/MatchJobPage';
+import ProfilePage from './pages/ProfilePage';
+import ResumePage from './pages/ResumePage';
 import SignupPage from './pages/SignupPage';
 
 export default function App() {
@@ -9,7 +14,46 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <DashboardPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <RequireAuth>
+            <ProfilePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/resume"
+        element={
+          <RequireAuth>
+            <ResumePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/jobs"
+        element={
+          <RequireAuth>
+            <JobsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/match"
+        element={
+          <RequireAuth>
+            <MatchJobPage />
+          </RequireAuth>
+        }
+      />
     </Routes>
   );
 }

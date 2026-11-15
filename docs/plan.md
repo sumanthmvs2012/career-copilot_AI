@@ -33,7 +33,13 @@ Source of truth: `PRD.md`, `ARCHITECTURE.md`, `DATABASE.md`, `DESIGN_SYSTEM.md`,
 
 ## Phase 1: Planning (in progress)
 
-**Progress:** the Phase 2 login page has started early. `frontend/` uses React + Vite. The token is kept in memory and copied to sessionStorage. The page is tested against a mocked `/auth/login`.
+**Progress:** the Phase 2 login page has started early. `frontend/` uses React + Vite. The token is kept in memory and copied to sessionStorage. The page is tested against a mocked `/auth/login`. The sign-up page is also done (email, password of at least 8 characters, confirm password) and uses a mocked `/auth/signup`. The 8-character minimum is an assumption until SECURITY.md sets a password policy.
+
+**Backend (Phase 3, started):** `backend/` uses Spring Boot 4.1 on Java 21. It has the auth module (`POST /auth/signup`, `POST /auth/login`), the profiles module (`GET/PUT /profile`, owner-only via the JWT subject) and the resumes module (`POST /resumes` multipart upload with PDF/DOCX checks, 5 MB limit, local-disk `StorageService` and PDFBox/POI text extraction; `GET /resumes`, `GET /resumes/{id}`), the Flyway migrations V1 users, V2 profiles, V3 resumes, JWT, rate limiting, a global error handler and CORS. 62 tests pass (unit + MockMvc on H2). On 2026-11-15 it was run against a real Postgres (pgvector/pg17 in Docker): all migrations applied and every endpoint was exercised over HTTP and in the browser.
+
+**Frontend (Phase 2, continuing):** the dashboard shows a profile card, a resume card and the applications table (PRD columns, empty state for now, behind a stub service) with loading, empty, error and success states. A profile page creates and edits the profile; a resume page uploads or replaces the base resume. `/dashboard`, `/profile` and `/resume` are protected routes. 116 tests pass; lint and build pass.
+
+**Schema decision (2026-11-15):** `resumes.skills` (jsonb) and the `embedding vector(1024)` columns are added by the Phase 5 AI migration rather than now, because the tests run on H2, which cannot run those types; that migration also moves the backend tests to Testcontainers with pgvector (TESTING.md). `resumes.job_id` arrives with the jobs migration so it can carry its foreign key.
 
 ### 1.1 Requirements map
 
@@ -80,6 +86,11 @@ Source of truth: `PRD.md`, `ARCHITECTURE.md`, `DATABASE.md`, `DESIGN_SYSTEM.md`,
 2. Reminders: 7 days after applying with no reply, shown in the app. This is a default and can be changed.
 3. Location preferences: stored on the profile (location, remote OK).
 4. Schema fixes in 1.2: approved. Pasted jobs become `jobs` rows with source "manual". Suggestions are generated on request. Drafts are `applications` rows with status "draft".
+5. Pasted jobs before the AI module exists: `POST /jobs/match` stores the job and returns a placeholder (`match: null` plus a message). The real score arrives with Phase 5. Pasted jobs carry `created_by_profile_id` so only the user who pasted a job can see it.
+9. Location and category filters (2026-11-15): job_locations table + jobs.category, GET /jobs/facets; see ARCHITECTURE.md "Job location and category filters".
+8. Job filters (2026-11-15): GET /jobs gets q, source, remoteType, location, postedWithin and offset; a /jobs page uses them (ARCHITECTURE.md "Job filters").
+7. Scraper (2026-11-15): Greenhouse and Lever first via a JobSource interface, hourly, boards configured by SCRAPER_BOARDS; see ARCHITECTURE.md "Job scraper".
+6. Resume limit: a profile stores at most 2 uploaded resumes. Each upload is kept and the newest becomes the base resume; a third upload is refused (409) until the user deletes one (`DELETE /resumes/{id}`). Tailored copies do not count toward the 2.
 
 ### 1.5 Planned module layout (from CODE_STYLE.md)
 
@@ -94,5 +105,7 @@ frontend/  src/{pages,components,services,utils}
 
 1. Done: decisions made and docs updated.
 2. Write the first Flyway migrations from DATABASE.md.
-3. Scaffold `backend/` and build the auth module (`POST /auth/login`, `POST /auth/signup`) that the login page calls. The login page currently assumes the response is `{ token }`.
-4. Continue Phase 2 (UI), starting the dashboard early.
+3. Done: backend auth module, run against local Postgres, frontend switched off the auth mock (`VITE_USE_MOCK_AUTH=false`).
+4. Done: dashboard (early version) and profile page; profiles migration and `GET/PUT /profile`.
+5. Done: resume upload (`resumes` migration, `POST /resumes`, local `StorageService`, text extraction, upload page and dashboard card).
+6. Next: jobs (`companies`/`jobs` migrations, `POST /jobs/match` for pasted descriptions, `GET /jobs`, match page) and applications (`applications` migration, `POST/GET/PUT /applications`, real dashboard table). See docs/handoff.md "Next steps".

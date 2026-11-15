@@ -10,6 +10,6 @@ Testing
  
  
  Part three: coverage and commands. Aim for around eighty percent coverage on the backend services. 
-             Backend tests run with mvn test, and the frontend with npm test. 
+             Backend tests run with mvn test (from backend/; they use an in-memory H2 database in PostgreSQL mode, and will move to Testcontainers with pgvector once vector columns arrive), and the frontend with npm test. 
              The build uses mvn package, and linting uses npm run lint. These commands start working once the code exists.
              The frontend build runs with npm run build (run frontend commands from the frontend/ folder).

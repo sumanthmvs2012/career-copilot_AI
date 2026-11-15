@@ -6,11 +6,17 @@ Part one: the tables. Users hold the login details. Profiles link to users and h
 
 Part two: the columns => Users: id, email, password hash, created at, updated at.
                          Profiles: id, user id, full name, headline, location, remote ok, auto submit enabled (default false), created at, updated at.
-                         Resumes: id, profile id, file path, parsed text, skills (jsonb), embedding (vector 1024), is base, base resume id (nullable),
-                                  job id (nullable), created at.
-                         Companies: id, name, website, careers URL, ats type (greenhouse, lever, ashby, workable, smartrecruiters), board token.
-                         Jobs: id, company id (nullable for pasted jobs), source (greenhouse, lever, ashby, workable, smartrecruiters, manual), external id,
-                               title, description, location, remote type (remote, hybrid, onsite), source URL, embedding (vector 1024), posted at, scraped at.
+                         Resumes: id, profile id, file path (storage key, never a URL), file name, content type, parsed text, is base, base resume id (nullable),
+                                  created at, job id (nullable, set on tailored copies).
+                                  Skills (jsonb) and embedding (vector 1024) are added by the Phase 5 AI migration.
+                         Companies: id, name, website, careers URL, ats type (greenhouse, lever, ashby, workable, smartrecruiters; null for a company typed in
+                                    by a user on a pasted job), board token, created at.
+                         Jobs: id, company id (nullable for pasted jobs), created by profile id (nullable; set only for source manual, so a pasted job is visible
+                               only to the user who pasted it), source (greenhouse, lever, ashby, workable, smartrecruiters, manual), external id (null for manual),
+                               title, description, location (raw text from the source), category (nullable; fixed list in ARCHITECTURE.md, indexed),
+                               remote type (remote, hybrid, onsite), source URL, embedding (vector 1024, Phase 5), posted at, scraped at, created at.
+                         Job locations: id, job id (foreign key to jobs, deleted with the job), city, state, country (each nullable, but at least one is set;
+                                        a job can have several rows; indexed by country, state, city and by job id).
 
 
 Part three: the columns => Job matches: id, profile id, job id, score (0-100), missing skills, near matched skills, missing keywords, suggested headline,

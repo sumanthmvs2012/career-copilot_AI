@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+
+app:
+  jwt:
+    # Test-only value; real secrets come from the environment.
+    secret: test-only-jwt-secret-0123456789-abcdefghijklmnop
+    expiry: PT1H
+  rate-limit:
+    max-requests: 5
+    window: PT1M
+  scraper:
+    # Tests never call the public job board APIs, even if backend/.env enables the scraper locally.
+    enabled: false
+    boards: ""

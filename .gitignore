@@ -11,8 +11,8 @@ coverage/
 *.log
 
 # Local resume storage (development only)
-storage/
-uploads/
+/backend/storage/
+/backend/uploads/
 
 # IDE / OS
 .idea/

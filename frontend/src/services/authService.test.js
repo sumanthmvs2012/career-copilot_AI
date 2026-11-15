@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, request } from './apiClient';
-import { login } from './authService';
+import { login, signup } from './authService';
 
 function jsonResponse(status, body) {
   return new Response(body === undefined ? '' : JSON.stringify(body), {
@@ -62,5 +62,35 @@ describe('apiClient and authService', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, {}));
 
     await expect(login('jane@example.com', 'secret')).rejects.toThrow(/token/);
+  });
+});
+
+describe('authService.signup', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts credentials as JSON to /auth/signup and returns the token', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ token: 'jwt-token' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(signup('jane@example.com', 'secret-pass')).resolves.toBe('jwt-token');
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/auth\/signup$/);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({
+      email: 'jane@example.com',
+      password: 'secret-pass',
+    });
+  });
+
+  it('throws when the response has no token', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 201 })));
+    await expect(signup('jane@example.com', 'secret-pass')).rejects.toThrow(
+      /no.*token|did not include/i,
+    );
   });
 });

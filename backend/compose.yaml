@@ -1,0 +1,16 @@
+# Local development database only. Uses the pgvector image so later AI features work unchanged.
+# Start with: docker compose up -d   (reads DB_USERNAME / DB_PASSWORD from backend/.env)
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: career_copilot
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

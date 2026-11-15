@@ -3,7 +3,7 @@ AGENTS
 
 Part one: project context. The project is the AI Job Application and Career Copilot, and its users are job seekers.
 
-Part two: the source of truth. Before any significant change, read the docs: the files at the repo root, plus docs/plan.md for the phase plan and decisions. 
+Part two: the source of truth. Before any significant change, read the files in the docs folder. 
           Those are the PRD, design system, architecture, database, security, code style, and testing files. 
 		  Don't contradict them without first pointing out the conflict.
 		  

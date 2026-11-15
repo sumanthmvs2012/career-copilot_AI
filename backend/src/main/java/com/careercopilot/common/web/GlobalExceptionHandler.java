@@ -1,0 +1,119 @@
+package com.careercopilot.common.web;
+
+import com.careercopilot.auth.EmailAlreadyUsedException;
+import com.careercopilot.auth.InvalidCredentialsException;
+import com.careercopilot.auth.PasswordTooLongException;
+import com.careercopilot.jobs.InvalidJobQueryException;
+import com.careercopilot.profiles.ProfileNotFoundException;
+import com.careercopilot.resumes.InvalidResumeFileException;
+import com.careercopilot.resumes.ResumeLimitReachedException;
+import com.careercopilot.resumes.ResumeNotFoundException;
+import com.careercopilot.resumes.ResumeTooLargeException;
+import com.careercopilot.resumes.ResumeUnreadableException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+/** Turns every error into an ErrorResponse; technical details go to the logs, never the client. */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        // Only the field name and our own message are returned; rejected values (passwords) are not.
+        ex.getBindingResult().getFieldErrors()
+                .forEach(error -> fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "Please check your details.", fieldErrors));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException ex) {
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "Request body is missing or malformed."));
+    }
+
+    @ExceptionHandler(PasswordTooLongException.class)
+    ResponseEntity<ErrorResponse> handlePasswordTooLong(PasswordTooLongException ex) {
+        return respond(HttpStatus.BAD_REQUEST,
+                new ErrorResponse(400, "Please check your details.", Map.of("password", ex.getMessage())));
+    }
+
+    @ExceptionHandler(EmailAlreadyUsedException.class)
+    ResponseEntity<ErrorResponse> handleEmailUsed(EmailAlreadyUsedException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "An account with this email already exists."));
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return respond(HttpStatus.UNAUTHORIZED, new ErrorResponse(401, "Email or password is incorrect."));
+    }
+
+    @ExceptionHandler(ProfileNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleProfileNotFound(ProfileNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Create your profile first."));
+    }
+
+    @ExceptionHandler(InvalidJobQueryException.class)
+    ResponseEntity<ErrorResponse> handleInvalidJobQuery(InvalidJobQueryException ex) {
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, ex.getMessage()));
+    }
+
+    @ExceptionHandler(ResumeNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleResumeNotFound(ResumeNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Resume not found."));
+    }
+
+    @ExceptionHandler(ResumeLimitReachedException.class)
+    ResponseEntity<ErrorResponse> handleResumeLimit(ResumeLimitReachedException ex) {
+        return respond(HttpStatus.CONFLICT,
+                new ErrorResponse(409, "You already have 2 resumes. Delete one to upload another."));
+    }
+
+    @ExceptionHandler(InvalidResumeFileException.class)
+    ResponseEntity<ErrorResponse> handleInvalidResumeFile(InvalidResumeFileException ex) {
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "Upload a PDF or DOCX file."));
+    }
+
+    @ExceptionHandler({ResumeTooLargeException.class, MaxUploadSizeExceededException.class})
+    ResponseEntity<ErrorResponse> handleTooLarge(Exception ex) {
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "The file must be 5 MB or smaller."));
+    }
+
+    @ExceptionHandler(ResumeUnreadableException.class)
+    ResponseEntity<ErrorResponse> handleResumeUnreadable(ResumeUnreadableException ex) {
+        return respond(HttpStatus.BAD_REQUEST, new ErrorResponse(400, "We could not read text from this file."));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    ResponseEntity<ErrorResponse> handleNotFound(NoResourceFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Not found."));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException ex) {
+        return respond(HttpStatus.METHOD_NOT_ALLOWED, new ErrorResponse(405, "Method not allowed."));
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        log.error("Unhandled error", ex);
+        return respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                new ErrorResponse(500, "Something went wrong. Please try again."));
+    }
+
+    private static ResponseEntity<ErrorResponse> respond(HttpStatus status, ErrorResponse body) {
+        return ResponseEntity.status(status).body(body);
+    }
+}
