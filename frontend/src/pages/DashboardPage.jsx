@@ -8,8 +8,8 @@ import Icon from '../components/Icon';
 import JobDetails from '../components/JobDetails';
 import JobFilters from '../components/JobFilters';
 import MailboxCard from '../components/MailboxCard';
-import Select from '../components/Select';
 import StatusBadge from '../components/StatusBadge';
+import StatusSelect from '../components/StatusSelect';
 import SubmitApplicationPanel from '../components/SubmitApplicationPanel';
 import {
   APPLICATION_STATUSES,
@@ -24,11 +24,6 @@ import { EMPTY_PLACE_FILTERS } from '../utils/jobFilters';
 import { isTailoredCopy } from '../utils/resumes';
 import { clearToken } from '../utils/authToken';
 import { formatRelativeTime } from '../utils/relativeTime';
-
-const STATUS_OPTIONS = APPLICATION_STATUSES.map((value) => ({
-  value,
-  label: value.charAt(0).toUpperCase() + value.slice(1),
-}));
 
 const APPLICATION_COLUMNS = ['Job', 'Status', 'Applied', 'Email sent', 'When', 'Actions'];
 
@@ -194,6 +189,8 @@ function ApplicationRow({ app, onUnauthorized }) {
   const [row, setRow] = useState(app);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Shown immediately on change (so the colour follows at once); reverts if saving fails.
+  const [pending, setPending] = useState(null);
   const [editing, setEditing] = useState(false);
   const [submittedNote, setSubmittedNote] = useState(false);
 
@@ -206,15 +203,18 @@ function ApplicationRow({ app, onUnauthorized }) {
     const status = event.target.value;
     setSaving(true);
     setError('');
+    setPending(status);
     try {
       setRow(await updateApplication(app.id, { status }));
     } catch (err) {
+      setPending(null);
       if (err?.status === 401) return onUnauthorized();
       // Status only: never log tokens or text.
       console.error('Updating application failed', { status: err?.status ?? 'unknown' });
       setError('We could not save the status. Please try again.');
     } finally {
       setSaving(false);
+      setPending(null);
     }
   }
 
@@ -226,11 +226,10 @@ function ApplicationRow({ app, onUnauthorized }) {
           {row.company && <span className="app-job__company">{row.company}</span>}
         </td>
         <td>
-          <StatusBadge status={row.status} />
-          <Select
+          <StatusSelect
             label={`Change status for ${row.jobTitle}`}
-            options={STATUS_OPTIONS}
-            value={row.status}
+            statuses={APPLICATION_STATUSES}
+            value={pending ?? row.status}
             disabled={saving}
             onChange={changeStatus}
           />

@@ -164,7 +164,8 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Engineer')).toBeInTheDocument();
     expect(screen.getByText('Acme')).toBeInTheDocument();
-    expect(screen.getByText('applied')).toBeInTheDocument();
+    expect(screen.getByLabelText('Change status for Engineer')).toHaveDisplayValue('Applied');
+    expect(screen.queryByText('applied')).not.toBeInTheDocument();
     expect(screen.getByText('Yes')).toBeInTheDocument();
     expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Demo data')).not.toBeInTheDocument();
@@ -305,8 +306,8 @@ describe('DashboardPage', () => {
     renderDashboard();
 
     expect(await screen.findByText('Demo data')).toBeInTheDocument();
-    expect(screen.getByText('offer')).toBeInTheDocument();
-    expect(screen.getByText('rejected')).toBeInTheDocument();
+    expect(screen.getByLabelText('Change status for A')).toHaveDisplayValue('Offer');
+    expect(screen.getByLabelText('Change status for B')).toHaveDisplayValue('Rejected');
     expect(screen.getByText('Yes')).toBeInTheDocument();
     expect(screen.getByText('No')).toBeInTheDocument();
     expect(screen.getByText('5 days ago')).toBeInTheDocument();
