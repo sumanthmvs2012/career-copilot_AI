@@ -38,8 +38,8 @@ Do not add features that are not in `PRD.md`, `docs/plan.md` or a user request. 
 
 ## Git rules (set by the user)
 
-- **Commit and push only when the user asks.** Never on your own.
-- Work on branch `feature_v1`. Push `feature_v1` by default. Push `main` only when the user says so in that same request ("and main"). Name the branch in every `git push`.
+- **Standing rule (since 2026-11-16): after a finished task, commit and push directly, without asking.** Plain pushes only; never force-push or rewrite history unless asked.
+- Work on `feature_v1` and push it, then push the same commit to `main` (`git push origin feature_v1:main`). Name the branch in every `git push`. Check staged files for secrets first.
 - Remote: `origin` = the user's `career-copilot_AI` GitHub repo. End commit messages with the Co-Authored-By line given by the harness.
 
 ## How to work here
