@@ -131,7 +131,7 @@ describe('jobService', () => {
     });
     await listJobs({ q: '   ', source: '', remoteType: '', location: '', offset: 0 });
 
-    const params = new URL(fetchMock.mock.calls[0][0]).searchParams;
+    const params = new URL(fetchMock.mock.calls[0][0], 'http://localhost').searchParams;
     expect(Object.fromEntries(params)).toEqual({
       scope: 'scraped',
       limit: '20',
@@ -155,7 +155,7 @@ describe('jobService', () => {
       state: 'CA',
     });
     await listJobs({ category: '', country: '  ', state: '' });
-    const params = new URL(fetchMock.mock.calls[0][0]).searchParams;
+    const params = new URL(fetchMock.mock.calls[0][0], 'http://localhost').searchParams;
     expect(Object.fromEntries(params)).toEqual({
       scope: 'scraped',
       category: 'Data & ML',
@@ -186,7 +186,7 @@ describe('jobService', () => {
     expect(fetchMock.mock.calls[0][0]).toMatch(/\/jobs\/facets\?scope=scraped$/);
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer jwt-token');
     expect(fetchMock.mock.calls[1][0]).toMatch(/\/jobs\/facets\?scope=pasted&country=Canada$/);
-    const url = new URL(fetchMock.mock.calls[2][0]);
+    const url = new URL(fetchMock.mock.calls[2][0], 'http://localhost');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       scope: 'scraped',
       q: 'engineer',
