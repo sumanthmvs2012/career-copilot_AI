@@ -1,12 +1,18 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getStoredMatch, matchJob } from '../services/jobService';
+import { getSuggestions, listResumes, tailorResume } from '../services/resumeService';
 import { sourceLabel } from '../utils/relativeTime';
 import JobDetails from './JobDetails';
 
 vi.mock('../services/jobService', () => ({ matchJob: vi.fn(), getStoredMatch: vi.fn() }));
+vi.mock('../services/resumeService', () => ({
+  listResumes: vi.fn(),
+  tailorResume: vi.fn(),
+  getSuggestions: vi.fn(),
+}));
 
 const MATCH = {
   jobId: 1,
@@ -66,7 +72,7 @@ describe('JobDetails', () => {
   });
 
   it('shows the category chip and structured locations joined by a dot', () => {
-    render(
+    renderJob(
       <JobDetails
         job={{
           ...JOB,
@@ -217,5 +223,119 @@ describe('JobDetails', () => {
     expect(sourceLabel('manual')).toBe('Pasted manually');
     expect(sourceLabel('adzuna')).toBe('adzuna');
     expect(sourceLabel(null)).toBe('');
+  });
+});
+
+describe('JobDetails tailoring', () => {
+  const BASE = { id: 3, fileName: 'cv.pdf', isBase: true, baseResumeId: null };
+
+  function renderWithRoutes(job = JOB, props = {}) {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/jobs']}>
+        <Routes>
+          <Route path="/jobs" element={<JobDetails job={job} {...props} />} />
+          <Route path="/resume/:id" element={<p>Tailored page</p>} />
+          <Route path="/resume" element={<p>Resume page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    return user;
+  }
+
+  beforeEach(() => {
+    vi.mocked(matchJob).mockReset();
+    vi.mocked(getStoredMatch).mockReset().mockResolvedValue(null);
+    vi.mocked(listResumes).mockReset().mockResolvedValue([BASE]);
+    vi.mocked(tailorResume).mockReset();
+    vi.mocked(getSuggestions).mockReset();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('tailors the base resume and opens the copy', async () => {
+    vi.mocked(tailorResume).mockResolvedValue({ id: 11 });
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText('Tailored page')).toBeInTheDocument();
+    expect(tailorResume).toHaveBeenCalledWith(3, 1);
+  });
+
+  it('skips tailored copies when picking the base', async () => {
+    vi.mocked(listResumes).mockResolvedValue([
+      { id: 8, isBase: true, baseResumeId: 3, jobId: 1 },
+      BASE,
+    ]);
+    vi.mocked(tailorResume).mockResolvedValue({ id: 12 });
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    await screen.findByText('Tailored page');
+    expect(tailorResume).toHaveBeenCalledWith(3, 1);
+  });
+
+  it('shows a message with a link when there is no resume', async () => {
+    vi.mocked(listResumes).mockResolvedValue([]);
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText(/upload a resume first to tailor it/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Go to your resumes' })).toHaveAttribute(
+      'href',
+      '/resume',
+    );
+    expect(tailorResume).not.toHaveBeenCalled();
+  });
+
+  it('shows the no-resume message when the server answers 409', async () => {
+    vi.mocked(tailorResume).mockRejectedValue(apiError(409));
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText(/upload a resume first to tailor it/i)).toBeInTheDocument();
+  });
+
+  it('shows an error and retries', async () => {
+    vi.mocked(tailorResume).mockRejectedValueOnce(apiError(500)).mockResolvedValueOnce({ id: 13 });
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText(/could not tailor your resume/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Tailored page')).toBeInTheDocument();
+  });
+
+  it('toggles suggestions in place without tailoring', async () => {
+    vi.mocked(getSuggestions).mockResolvedValue({
+      suggestions: [
+        { type: 'add_skill', text: 'Add Kafka to your resume if you have used it.' },
+        { type: 'headline', text: 'Use Backend Engineer as headline.' },
+      ],
+    });
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Get suggestions' }));
+    expect(await screen.findByText(/add kafka to your resume/i)).toBeInTheDocument();
+    expect(screen.getByText('Skills to add')).toBeInTheDocument();
+    expect(screen.getByText('Headline')).toBeInTheDocument();
+    expect(getSuggestions).toHaveBeenCalledWith(3, 1);
+    expect(tailorResume).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Hide suggestions' }));
+    expect(screen.queryByText(/add kafka/i)).not.toBeInTheDocument();
+  });
+
+  it('shows an error with retry when suggestions fail', async () => {
+    vi.mocked(getSuggestions)
+      .mockRejectedValueOnce(apiError(500))
+      .mockResolvedValueOnce({ suggestions: [] });
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Get suggestions' }));
+    expect(await screen.findByText(/could not load suggestions/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('No suggestions for this job.')).toBeInTheDocument();
+  });
+
+  it('hides the tailor controls in compact mode', () => {
+    renderWithRoutes(JOB, { compact: true });
+    expect(screen.queryByRole('button', { name: /tailor my resume/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the tailor controls for a job without an id', () => {
+    renderWithRoutes({ ...JOB, id: undefined });
+    expect(screen.queryByRole('button', { name: /tailor my resume/i })).not.toBeInTheDocument();
   });
 });

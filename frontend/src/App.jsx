@@ -7,6 +7,7 @@ import MatchJobPage from './pages/MatchJobPage';
 import ProfilePage from './pages/ProfilePage';
 import ResumePage from './pages/ResumePage';
 import SignupPage from './pages/SignupPage';
+import TailoredResumePage from './pages/TailoredResumePage';
 
 export default function App() {
   return (
@@ -35,6 +36,14 @@ export default function App() {
         element={
           <RequireAuth>
             <ResumePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/resume/:id"
+        element={
+          <RequireAuth>
+            <TailoredResumePage />
           </RequireAuth>
         }
       />

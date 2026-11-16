@@ -916,3 +916,61 @@
 .resume-skills {
   margin: var(--space-2) 0 0;
 }
+
+.suggestions__heading {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.suggestions__list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.suggestions__list:has(.suggestions__check) {
+  padding-left: 0;
+  list-style: none;
+}
+
+.suggestions__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.suggestions__check input {
+  margin-top: 0.3em;
+}
+
+.job-item__tailor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.job-item__tailor > .suggestions {
+  align-self: stretch;
+}
+
+.resume-text {
+  max-height: 28rem;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg-tint);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}

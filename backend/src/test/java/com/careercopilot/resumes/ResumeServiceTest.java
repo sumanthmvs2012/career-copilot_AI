@@ -203,6 +203,39 @@ class ResumeServiceTest {
     }
 
     @Test
+    void deletingAnUploadAlsoDeletesItsTailoredCopiesAndFiles() {
+        Resume base = resumeWithId(5L, "resumes/10/a.pdf", true);
+        Resume copy = resumeWithId(8L, "resumes/10/t.txt", false);
+        copy.setBaseResumeId(5L);
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(base));
+        when(resumes.findByProfileIdAndBaseResumeId(10L, 5L)).thenReturn(List.of(copy));
+
+        service.delete(1L, 5L);
+
+        verify(resumes).deleteAll(List.of(copy));
+        verify(resumes).delete(base);
+        verify(storage).delete("resumes/10/t.txt");
+        verify(storage).delete("resumes/10/a.pdf");
+    }
+
+    @Test
+    void deletingATailoredCopyNeverTouchesTheBaseOrOtherCopies() {
+        Resume copy = resumeWithId(8L, "resumes/10/t.txt", false);
+        copy.setBaseResumeId(5L);
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByIdAndProfileId(8L, 10L)).thenReturn(Optional.of(copy));
+
+        service.delete(1L, 8L);
+
+        verify(resumes).delete(copy);
+        verify(resumes, never()).deleteAll(any());
+        verify(resumes, never()).findByProfileIdAndBaseResumeId(anyLong(), anyLong());
+        verify(resumes, never()).save(any(Resume.class));
+        verify(storage).delete("resumes/10/t.txt");
+    }
+
+    @Test
     void deletingANonBaseResumeKeepsTheBase() {
         Resume other = resumeWithId(6L, "resumes/10/b.pdf", false);
         when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));

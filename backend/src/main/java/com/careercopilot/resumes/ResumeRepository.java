@@ -15,5 +15,10 @@ public interface ResumeRepository extends JpaRepository<Resume, Long> {
 
     Optional<Resume> findFirstByProfileIdAndBaseResumeIdIsNullOrderByCreatedAtDesc(Long profileId);
 
+    /** Tailored copies of one uploaded resume. */
+    List<Resume> findByProfileIdAndBaseResumeId(Long profileId, Long baseResumeId);
+
+    List<Resume> findByProfileIdAndBaseResumeIdAndJobId(Long profileId, Long baseResumeId, Long jobId);
+
     Optional<Resume> findByIdAndProfileId(Long id, Long profileId);
 }

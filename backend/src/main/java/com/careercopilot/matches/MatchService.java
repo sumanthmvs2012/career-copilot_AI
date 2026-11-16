@@ -24,7 +24,7 @@ public class MatchService {
 
     static final int MAX_KEYWORDS = 10;
     /** Same title JobService gives a pasted job without one; it says nothing, so it is not a headline. */
-    static final String DEFAULT_TITLE = "Pasted job";
+    public static final String DEFAULT_TITLE = "Pasted job";
 
     private static final Logger log = LoggerFactory.getLogger(MatchService.class);
 
@@ -71,14 +71,19 @@ public class MatchService {
     }
 
     /** Scraped jobs have no owner; a pasted job is visible only to the profile that created it. */
-    private Job visibleJob(Profile profile, Long jobId) {
+    public Job visibleJob(Profile profile, Long jobId) {
         return jobs.findById(jobId)
                 .filter(job -> job.getCreatedByProfileId() == null
                         || job.getCreatedByProfileId().equals(profile.getId()))
                 .orElseThrow(JobNotFoundException::new);
     }
 
-    private MatchResponse compute(Profile profile, Job job, Resume resume) {
+    /**
+     * Computes the match of any resume against a job without saving a match row (only missing skill lists
+     * are filled in on the resume and job rows, as in a normal match).
+     */
+    @Transactional
+    public MatchAnalysis analyze(Profile profile, Job job, Resume resume) {
         List<String> resumeSkills = resumeSkills(resume);
         List<String> jobSkills = jobSkills(job);
         Set<String> have = new HashSet<>(resumeSkills);
@@ -103,6 +108,17 @@ public class MatchService {
         List<JobLocation> places = locations.findByJobIdIn(List.of(job.getId()));
         LocationFit fit = LocationFitCalculator.evaluate(profile.isRemoteOk(), profile.getLocation(),
                 job.getRemoteType(), job.getLocation(), places);
+        return new MatchAnalysis(score, jobSkills, matched, missing, near, keywords, headline(job, profile), fit);
+    }
+
+    private MatchResponse compute(Profile profile, Job job, Resume resume) {
+        MatchAnalysis analysis = analyze(profile, job, resume);
+        int score = analysis.score();
+        LocationFit fit = analysis.locationFit();
+        List<String> matched = analysis.matchedSkills();
+        List<String> missing = analysis.missingSkills();
+        List<NearMatch> near = analysis.nearMatchedSkills();
+        List<String> keywords = analysis.missingKeywords();
 
         // One row per profile and job: the old row goes first so the new result carries a fresh timestamp.
         matches.findByProfileIdAndJobId(profile.getId(), job.getId()).ifPresent(old -> {
@@ -116,13 +132,13 @@ public class MatchService {
         row.setMissingSkills(SkillJson.write(missing));
         row.setNearMatchedSkills(SkillJson.write(near));
         row.setMissingKeywords(SkillJson.write(keywords));
-        row.setSuggestedHeadline(headline(job, profile));
+        row.setSuggestedHeadline(analysis.suggestedHeadline());
         row.setLocationFitStatus(fit.status());
         row.setLocationFitNote(fit.note());
         JobMatch saved = matches.save(row);
 
         log.info("Match computed for profile {} and job {}: score {}, {} job skills", profile.getId(), job.getId(),
-                score, jobSkills.size());
+                score, analysis.jobSkills().size());
         return MatchResponse.from(saved);
     }
 

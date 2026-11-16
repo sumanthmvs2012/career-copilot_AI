@@ -9,6 +9,7 @@ import {
   uploadResume,
   validateResumeFile,
 } from '../services/resumeService';
+import { isTailoredCopy, tailoredLabel } from '../utils/resumes';
 
 const LIMIT_NOTE = 'You have 2 resumes. Delete one to upload another.';
 
@@ -55,6 +56,46 @@ function ResumeItem({ resume, confirming, deleting, onAskDelete, onCancel, onCon
             onClick={() => onAskDelete(resume.id)}
             disabled={deleting}
             aria-label={`Delete ${resume.fileName}`}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function TailoredItem({ copy, confirming, deleting, onAskDelete, onCancel, onConfirm }) {
+  return (
+    <li className="resume-list__item">
+      <p className="resume-list__name">
+        <Link to={`/resume/${copy.id}`}>{tailoredLabel(copy)}</Link>
+      </p>
+      <p className="resume-list__meta">
+        <span>Created {new Date(copy.createdAt).toLocaleDateString()}</span>
+      </p>
+      <div className="resume-list__actions">
+        {confirming ? (
+          <>
+            <span>Delete this tailored copy?</span>
+            <Button
+              variant="secondary"
+              onClick={() => onConfirm(copy)}
+              loading={deleting}
+              loadingText="Deleting…"
+            >
+              Delete
+            </Button>
+            <Button variant="secondary" onClick={onCancel} disabled={deleting}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() => onAskDelete(copy.id)}
+            disabled={deleting}
+            aria-label={`Delete tailored copy for ${tailoredLabel(copy)}`}
           >
             Delete
           </Button>
@@ -155,9 +196,14 @@ export default function ResumePage() {
     try {
       const created = await uploadResume(file);
       // The newest upload is the base; keep at most MAX_RESUMES.
-      setResumes((current) =>
-        [created, ...current.map((r) => ({ ...r, isBase: false }))].slice(0, MAX_RESUMES),
-      );
+      setResumes((current) => [
+        created,
+        ...current
+          .filter((r) => !isTailoredCopy(r))
+          .map((r) => ({ ...r, isBase: false }))
+          .slice(0, MAX_RESUMES - 1),
+        ...current.filter(isTailoredCopy),
+      ]);
       setUploaded(true);
       setFile(null);
       if (inputRef.current) inputRef.current.value = '';
@@ -192,7 +238,9 @@ export default function ResumePage() {
     }
   }
 
-  const atLimit = resumes.length >= MAX_RESUMES;
+  const uploads = resumes.filter((r) => !isTailoredCopy(r));
+  const tailored = resumes.filter(isTailoredCopy);
+  const atLimit = uploads.length >= MAX_RESUMES;
 
   return (
     <main className="page page--narrow">
@@ -214,7 +262,7 @@ export default function ResumePage() {
         {loadState === 'ready' && (
           <>
             <h2 id="resumes-heading">
-              Your resumes ({resumes.length} of {MAX_RESUMES})
+              Your resumes ({uploads.length} of {MAX_RESUMES})
             </h2>
             {deleteError && (
               <>
@@ -228,9 +276,9 @@ export default function ResumePage() {
                 </Button>
               </>
             )}
-            {resumes.length > 0 ? (
+            {uploads.length > 0 ? (
               <ul className="resume-list" aria-labelledby="resumes-heading">
-                {resumes.map((resume) => (
+                {uploads.map((resume) => (
                   <ResumeItem
                     key={resume.id}
                     resume={resume}
@@ -247,6 +295,28 @@ export default function ResumePage() {
               </ul>
             ) : (
               <p>You have not uploaded a resume yet.</p>
+            )}
+
+            {tailored.length > 0 && (
+              <>
+                <h2 id="tailored-heading">Tailored copies</h2>
+                <ul className="resume-list" aria-labelledby="tailored-heading">
+                  {tailored.map((copy) => (
+                    <TailoredItem
+                      key={copy.id}
+                      copy={copy}
+                      confirming={confirmId === copy.id}
+                      deleting={deletingId === copy.id}
+                      onAskDelete={(copyId) => {
+                        setDeleteError(null);
+                        setConfirmId(copyId);
+                      }}
+                      onCancel={() => setConfirmId(null)}
+                      onConfirm={handleDelete}
+                    />
+                  ))}
+                </ul>
+              </>
             )}
 
             <form onSubmit={handleSubmit} noValidate>

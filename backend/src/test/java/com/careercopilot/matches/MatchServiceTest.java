@@ -367,4 +367,21 @@ class MatchServiceTest {
 
         assertThatThrownBy(() -> service.getStored(1L, 7L)).isInstanceOf(ProfileNotFoundException.class);
     }
+
+    @Test
+    void analyzeReturnsTheMatchForAnyResumeWithoutStoringARow() {
+        Job job = job(7L, "Backend Engineer", "Needs Java and Docker", null);
+        Resume copy = resume("text", "[\"Java\"]");
+        stubHappyPath(job, resume("other", "[]"));
+
+        MatchAnalysis analysis = service.analyze(profile, job, copy);
+
+        assertThat(analysis.score()).isEqualTo(50);
+        assertThat(analysis.jobSkills()).containsExactly("Java", "Docker");
+        assertThat(analysis.matchedSkills()).containsExactly("Java");
+        assertThat(analysis.missingSkills()).containsExactly("Docker");
+        assertThat(analysis.suggestedHeadline()).isEqualTo("Backend Engineer");
+        verify(matches, never()).save(any(JobMatch.class));
+        verify(matches, never()).delete(any(JobMatch.class));
+    }
 }

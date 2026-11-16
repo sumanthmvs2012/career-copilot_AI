@@ -98,6 +98,14 @@ public class ResumeService {
         String key = resume.getFilePath();
         boolean wasBase = resume.isBase();
 
+        // The base_resume_id foreign key has no cascade, so an uploaded resume's tailored copies go first.
+        List<Resume> copies = resume.getBaseResumeId() == null
+                ? resumes.findByProfileIdAndBaseResumeId(profile.getId(), resume.getId())
+                : List.of();
+        if (!copies.isEmpty()) {
+            resumes.deleteAll(copies);
+            resumes.flush();
+        }
         resumes.delete(resume);
         if (wasBase) {
             resumes.findFirstByProfileIdAndBaseResumeIdIsNullOrderByCreatedAtDesc(profile.getId())
@@ -107,12 +115,17 @@ public class ResumeService {
                         resumes.save(remaining);
                     });
         }
+        deleteFile(key, id);
+        copies.forEach(copy -> deleteFile(copy.getFilePath(), copy.getId()));
+        log.info("Resume {} deleted for profile {} with {} tailored copies", id, profile.getId(), copies.size());
+    }
+
+    private void deleteFile(String key, Long resumeId) {
         try {
             storage.delete(key);
         } catch (StorageException e) {
-            log.warn("Could not delete the stored file of resume {}", id);
+            log.warn("Could not delete the stored file of resume {}", resumeId);
         }
-        log.info("Resume {} deleted for profile {}", id, profile.getId());
     }
 
     /** Resumes uploaded before skills existed get them filled in on first read. */

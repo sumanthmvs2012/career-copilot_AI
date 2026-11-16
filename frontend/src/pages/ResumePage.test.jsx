@@ -258,3 +258,52 @@ describe('ResumePage', () => {
     });
   });
 });
+
+describe('ResumePage tailored copies', () => {
+  const COPY = {
+    id: 9,
+    fileName: 'Tailored - Backend Engineer - Acme.txt',
+    isBase: false,
+    baseResumeId: 1,
+    jobId: 4,
+    jobTitle: 'Backend Engineer',
+    company: 'Acme',
+    createdAt: '2026-11-12T10:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.mocked(listResumes).mockReset();
+    vi.mocked(deleteResume).mockReset().mockResolvedValue(null);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('lists tailored copies separately and does not count them toward the limit', async () => {
+    vi.mocked(listResumes).mockResolvedValue([RESUME, COPY]);
+    renderResume();
+    expect(await screen.findByText('Your resumes (1 of 2)')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tailored copies' })).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Backend Engineer at Acme' });
+    expect(link).toHaveAttribute('href', '/resume/9');
+    expect(screen.getByLabelText(/resume file/i)).toBeEnabled();
+  });
+
+  it('hides the section when there are no tailored copies', async () => {
+    vi.mocked(listResumes).mockResolvedValue([RESUME]);
+    renderResume();
+    await screen.findByText('Your resumes (1 of 2)');
+    expect(screen.queryByRole('heading', { name: 'Tailored copies' })).not.toBeInTheDocument();
+  });
+
+  it('deletes a tailored copy inline after confirming', async () => {
+    vi.mocked(listResumes).mockResolvedValueOnce([RESUME, COPY]).mockResolvedValueOnce([RESUME]);
+    const user = renderResume();
+    const label = 'Delete tailored copy for Backend Engineer at Acme';
+    await user.click(await screen.findByRole('button', { name: label }));
+    const section = screen.getByRole('list', { name: 'Tailored copies' });
+    await user.click(within(section).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(deleteResume).toHaveBeenCalledWith(9));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Tailored copies' })).not.toBeInTheDocument(),
+    );
+  });
+});

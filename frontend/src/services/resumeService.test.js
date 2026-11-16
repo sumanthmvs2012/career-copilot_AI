@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, upload } from './apiClient';
 import { mockDeleteResume, mockListResumes, mockUploadResume, resetMockResume } from './mockResume';
-import { deleteResume, listResumes, uploadResume, validateResumeFile } from './resumeService';
+import {
+  deleteResume,
+  getResume,
+  getSuggestions,
+  listResumes,
+  tailorResume,
+  uploadResume,
+  validateResumeFile,
+} from './resumeService';
 import { clearToken, getToken, setToken } from '../utils/authToken';
 
 function jsonResponse(status, body) {
@@ -174,5 +182,57 @@ describe('mockResume', () => {
   it('returns 401 without a token', async () => {
     clearToken();
     expect((await settle(mockListResumes())).status).toBe(401);
+  });
+});
+
+describe('resumeService tailoring', () => {
+  let fetchMock;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setToken('jwt-token');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearToken();
+  });
+
+  it('GETs one resume', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: 7, parsedText: 'x' }));
+    await expect(getResume(7)).resolves.toEqual({ id: 7, parsedText: 'x' });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/resumes\/7$/);
+    expect(options.method).toBe('GET');
+  });
+
+  it('POSTs the job id to tailor', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { id: 9 }));
+    await expect(tailorResume(1, 42)).resolves.toEqual({ id: 9 });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/resumes\/1\/tailor$/);
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({ jobId: 42 });
+    expect(options.headers.Authorization).toBe('Bearer jwt-token');
+  });
+
+  it('POSTs to suggestions with the job id in the query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { suggestions: [] }));
+    await expect(getSuggestions(1, 42)).resolves.toEqual({ suggestions: [] });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/resumes\/1\/suggestions\?jobId=42$/);
+    expect(options.method).toBe('POST');
+  });
+
+  it('clears the token on 401 and passes the error on', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, {}));
+    await expect(tailorResume(1, 2)).rejects.toMatchObject({ status: 401 });
+    expect(getToken()).toBeNull();
+  });
+
+  it('rejects with the status on 404', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(404, {}));
+    await expect(getResume(5)).rejects.toMatchObject({ status: 404 });
   });
 });

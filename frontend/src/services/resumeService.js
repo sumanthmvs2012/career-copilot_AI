@@ -1,9 +1,12 @@
-import { ApiError, del, get, upload } from './apiClient';
+import { ApiError, del, get, post, upload } from './apiClient';
 import { clearToken } from '../utils/authToken';
 import {
   isMockResumeEnabled,
   mockDeleteResume,
+  mockGetResume,
+  mockGetSuggestions,
   mockListResumes,
+  mockTailorResume,
   mockUploadResume,
 } from './mockResume';
 
@@ -52,4 +55,31 @@ export function uploadResume(file) {
     formData.append('file', file);
     return upload('/resumes', formData);
   });
+}
+
+// One resume (upload or tailored copy) including parsedText; 404 when missing or not yours.
+export function getResume(id) {
+  return withAuthHandling(() =>
+    isMockResumeEnabled() ? mockGetResume(Number(id)) : get(`/resumes/${encodeURIComponent(id)}`),
+  );
+}
+
+// Creates (or replaces) the tailored copy of an uploaded resume for a job; 404 for an unknown resume, job or profile.
+export function tailorResume(resumeId, jobId) {
+  return withAuthHandling(() =>
+    isMockResumeEnabled()
+      ? mockTailorResume(Number(resumeId), jobId)
+      : post(`/resumes/${encodeURIComponent(resumeId)}/tailor`, { jobId }),
+  );
+}
+
+// Resolves to {suggestions: [{type, text}]}; nothing is stored.
+export function getSuggestions(resumeId, jobId) {
+  return withAuthHandling(() =>
+    isMockResumeEnabled()
+      ? mockGetSuggestions(Number(resumeId), jobId)
+      : post(
+          `/resumes/${encodeURIComponent(resumeId)}/suggestions?jobId=${encodeURIComponent(jobId)}`,
+        ),
+  );
 }
