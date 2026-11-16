@@ -64,6 +64,25 @@ describe('JobDetails', () => {
     expect(screen.getByRole('button', { name: 'Match with my resume' })).toBeInTheDocument();
   });
 
+  it('opens the interview questions page from the Interview questions button', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<JobDetails job={JOB} />} />
+          <Route path="/jobs/:id/interview" element={<p>Interview page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: /Interview questions/ }));
+    expect(screen.getByText('Interview page')).toBeInTheDocument();
+  });
+
+  it('hides the Interview questions button in compact mode', () => {
+    renderJob(<JobDetails job={JOB} compact />);
+    expect(screen.queryByRole('button', { name: /Interview questions/ })).not.toBeInTheDocument();
+  });
+
   it('shows posted time and the source name for scraped jobs', () => {
     const postedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
     renderJob(<JobDetails job={{ ...JOB, source: 'remoteok', postedAt }} />);

@@ -11,6 +11,8 @@ import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
 import com.careercopilot.jobs.JobRepository;
+import com.careercopilot.mail.EmailLog;
+import com.careercopilot.mail.EmailLogRepository;
 import com.careercopilot.profiles.Profile;
 import com.careercopilot.profiles.ProfileNotFoundException;
 import com.careercopilot.profiles.ProfileRepository;
@@ -46,12 +48,15 @@ class ApplicationServiceTest {
     @Mock
     private ResumeRepository resumes;
 
+    @Mock
+    private EmailLogRepository emailLogs;
+
     private ApplicationService service;
     private Profile profile;
 
     @BeforeEach
     void setUp() {
-        service = new ApplicationService(profiles, applications, jobs, companies, resumes);
+        service = new ApplicationService(profiles, applications, jobs, companies, resumes, emailLogs);
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
     }
@@ -225,6 +230,117 @@ class ApplicationServiceTest {
         when(profiles.findByUserId(2L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.update(2L, 5L, new ApplicationUpdateRequest("applied", null)))
                 .isInstanceOf(ApplicationNotFoundException.class);
+    }
+
+    @Test
+    void submitMovesADraftToAppliedAndSavesTheCoverLetter() {
+        Application application = saved(5L, 3L);
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+        when(applications.saveAndFlush(application)).thenReturn(application);
+        when(jobs.findById(3L)).thenReturn(Optional.of(job(3L, null, null)));
+
+        ApplicationResponse response = service.submit(1L, 5L, new ApplicationSubmitRequest("My letter"));
+
+        assertThat(response.status()).isEqualTo("applied");
+        assertThat(response.appliedAt()).isNotNull();
+        assertThat(response.submittedBy()).isEqualTo("user");
+        assertThat(response.coverLetter()).isEqualTo("My letter");
+    }
+
+    @Test
+    void submitWithoutABodyKeepsTheExistingCoverLetter() {
+        Application application = saved(5L, 3L);
+        application.setCoverLetter("Saved earlier");
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+        when(applications.saveAndFlush(application)).thenReturn(application);
+        when(jobs.findById(3L)).thenReturn(Optional.empty());
+
+        ApplicationResponse response = service.submit(1L, 5L, null);
+
+        assertThat(response.coverLetter()).isEqualTo("Saved earlier");
+        assertThat(response.status()).isEqualTo("applied");
+    }
+
+    @Test
+    void submitRefusesAnythingButADraft() {
+        Application application = saved(5L, 3L);
+        application.setStatus("applied");
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> service.submit(1L, 5L, null)).isInstanceOf(ApplicationNotDraftException.class);
+        verify(applications, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void submitIsNotFoundForAnotherUsersApplicationOrNoProfile() {
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.submit(1L, 5L, null)).isInstanceOf(ApplicationNotFoundException.class);
+
+        when(profiles.findByUserId(2L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.submit(2L, 5L, null)).isInstanceOf(ApplicationNotFoundException.class);
+    }
+
+    @Test
+    void submitAutoNeedsAutoSubmitTurnedOn() {
+        Application application = saved(5L, 3L);
+        when(profiles.findById(10L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> service.submitAuto(10L, 5L)).isInstanceOf(AutoSubmitNotAllowedException.class);
+        assertThat(application.getStatus()).isEqualTo("draft");
+    }
+
+    @Test
+    void submitAutoMarksTheApplicationAsSubmittedByAuto() {
+        Application application = saved(5L, 3L);
+        profile.setAutoSubmitEnabled(true);
+        when(profiles.findById(10L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+        when(applications.saveAndFlush(application)).thenReturn(application);
+        when(jobs.findById(3L)).thenReturn(Optional.of(job(3L, null, null)));
+
+        ApplicationResponse response = service.submitAuto(10L, 5L);
+
+        assertThat(response.status()).isEqualTo("applied");
+        assertThat(response.submittedBy()).isEqualTo("auto");
+    }
+
+    @Test
+    void submitAutoRefusesANonDraftEvenWhenAllowed() {
+        Application application = saved(5L, 3L);
+        application.setStatus("rejected");
+        profile.setAutoSubmitEnabled(true);
+        when(profiles.findById(10L)).thenReturn(Optional.of(profile));
+        when(applications.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(application));
+
+        assertThatThrownBy(() -> service.submitAuto(10L, 5L)).isInstanceOf(ApplicationNotDraftException.class);
+    }
+
+    @Test
+    void emailFieldsComeFromTheLatestEmployerReplyInOneBatchQuery() {
+        EmailLog older = new EmailLog(2L, EmailLog.TYPE_REPLY, Instant.parse("2026-11-10T10:00:00Z"), "received");
+        older.setClassification("other");
+        EmailLog newer = new EmailLog(2L, EmailLog.TYPE_REPLY, Instant.parse("2026-11-12T10:00:00Z"), "received");
+        newer.setClassification("interview");
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(applications.findByProfileIdOrderByCreatedAtDescIdDesc(10L))
+                .thenReturn(List.of(saved(2L, 3L), saved(1L, 4L)));
+        when(jobs.findAllById(List.of(3L, 4L))).thenReturn(List.of(job(3L, null, null), job(4L, null, null)));
+        when(emailLogs.findByApplicationIdInAndTypeOrderByOccurredAtDescIdDesc(List.of(2L, 1L), "employer_reply"))
+                .thenReturn(List.of(newer, older));
+
+        List<ApplicationResponse> result = service.list(1L);
+
+        assertThat(result.get(0).emailSent()).isTrue();
+        assertThat(result.get(0).emailSentAt()).isEqualTo(Instant.parse("2026-11-12T10:00:00Z"));
+        assertThat(result.get(0).emailClassification()).isEqualTo("interview");
+        assertThat(result.get(1).emailSent()).isFalse();
+        assertThat(result.get(1).emailClassification()).isNull();
+        verify(emailLogs).findByApplicationIdInAndTypeOrderByOccurredAtDescIdDesc(List.of(2L, 1L), "employer_reply");
     }
 
     @Test

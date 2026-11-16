@@ -52,6 +52,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/auth/signup", "/auth/login").permitAll()
                         .requestMatchers("/actuator/health", "/error").permitAll()
+                        // Google redirects the browser here without a token; the signed state proves the user.
+                        .requestMatchers(HttpMethod.GET, "/mail-connections/callback").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(Customizer.withDefaults())

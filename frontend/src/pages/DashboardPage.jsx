@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '../components/Alert';
 import Avatar from '../components/Avatar';
 import Button from '../components/Button';
 import JobDetails from '../components/JobDetails';
 import JobFilters from '../components/JobFilters';
+import MailboxCard from '../components/MailboxCard';
 import Select from '../components/Select';
 import StatusBadge from '../components/StatusBadge';
+import SubmitApplicationPanel from '../components/SubmitApplicationPanel';
 import {
   APPLICATION_STATUSES,
   isMockApplications,
@@ -25,7 +27,12 @@ const STATUS_OPTIONS = APPLICATION_STATUSES.map((value) => ({
   label: value.charAt(0).toUpperCase() + value.slice(1),
 }));
 
-const APPLICATION_COLUMNS = ['Job', 'Status', 'Applied', 'Email sent', 'When'];
+const APPLICATION_COLUMNS = ['Job', 'Status', 'Applied', 'Email sent', 'When', 'Actions'];
+
+const MAIL_NOTICES = {
+  connected: { kind: 'success', text: 'Gmail is connected.' },
+  error: { kind: 'error', text: 'We could not connect Gmail. Please try again.' },
+};
 
 function ProfileCard({ state, profile, onRetry }) {
   if (state === 'loading') {
@@ -150,6 +157,8 @@ function ApplicationRow({ app, onUnauthorized }) {
   const [row, setRow] = useState(app);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [submittedNote, setSubmittedNote] = useState(false);
 
   // Keep the row in step when the list is reloaded.
   useEffect(() => {
@@ -173,37 +182,76 @@ function ApplicationRow({ app, onUnauthorized }) {
   }
 
   return (
-    <tr>
-      <td>
-        <span className="app-job__title">{row.jobTitle}</span>
-        {row.company && <span className="app-job__company">{row.company}</span>}
-      </td>
-      <td>
-        <StatusBadge status={row.status} />
-        <Select
-          label={`Change status for ${row.jobTitle}`}
-          options={STATUS_OPTIONS}
-          value={row.status}
-          disabled={saving}
-          onChange={changeStatus}
-        />
-        {saving && (
-          <span role="status" className="muted">
-            Saving…
+    <>
+      <tr>
+        <td>
+          <span className="app-job__title">{row.jobTitle}</span>
+          {row.company && <span className="app-job__company">{row.company}</span>}
+        </td>
+        <td>
+          <StatusBadge status={row.status} />
+          <Select
+            label={`Change status for ${row.jobTitle}`}
+            options={STATUS_OPTIONS}
+            value={row.status}
+            disabled={saving}
+            onChange={changeStatus}
+          />
+          {saving && (
+            <span role="status" className="muted">
+              Saving…
+            </span>
+          )}
+          {error && <Alert variant="error">{error}</Alert>}
+        </td>
+        <td>{row.appliedAt ? new Date(row.appliedAt).toLocaleDateString() : ''}</td>
+        <td>
+          <span className={`email-flag ${row.emailSent ? 'email-flag--yes' : ''}`}>
+            {row.emailSent ? 'Yes' : 'No'}
           </span>
-        )}
-        {error && <Alert variant="error">{error}</Alert>}
-      </td>
-      <td>{row.appliedAt ? new Date(row.appliedAt).toLocaleDateString() : ''}</td>
-      <td>
-        <span className={`email-flag ${row.emailSent ? 'email-flag--yes' : ''}`}>
-          {row.emailSent ? 'Yes' : 'No'}
-        </span>
-      </td>
-      <td title={row.emailSentAt ? new Date(row.emailSentAt).toLocaleString() : undefined}>
-        {formatRelativeTime(row.emailSentAt)}
-      </td>
-    </tr>
+          {row.emailSent && row.emailClassification && (
+            <StatusBadge status={row.emailClassification} />
+          )}
+        </td>
+        <td title={row.emailSentAt ? new Date(row.emailSentAt).toLocaleString() : undefined}>
+          {formatRelativeTime(row.emailSentAt)}
+        </td>
+        <td>
+          {row.status === 'draft' && !editing && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSubmittedNote(false);
+                setEditing(true);
+              }}
+              aria-label={`Edit and submit ${row.jobTitle}`}
+            >
+              Edit &amp; submit
+            </Button>
+          )}
+          {submittedNote && (
+            <span role="status" className="muted">
+              Marked as applied.
+            </span>
+          )}
+        </td>
+      </tr>
+      {editing && row.status === 'draft' && (
+        <tr>
+          <td colSpan={APPLICATION_COLUMNS.length}>
+            <SubmitApplicationPanel
+              application={row}
+              onUpdated={setRow}
+              onUnauthorized={onUnauthorized}
+              onClose={({ submitted }) => {
+                setEditing(false);
+                setSubmittedNote(submitted);
+              }}
+            />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -266,6 +314,19 @@ export default function DashboardPage() {
   const latestRequestId = useRef(0);
   const [appsState, setAppsState] = useState('loading');
   const [applications, setApplications] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [mailNotice, setMailNotice] = useState(
+    () => MAIL_NOTICES[searchParams.get('mail')] ?? null,
+  );
+
+  // Read ?mail=connected|error once, then remove it so a reload does not repeat the message.
+  useEffect(() => {
+    if (!searchParams.has('mail')) return;
+    setMailNotice(MAIL_NOTICES[searchParams.get('mail')] ?? null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('mail');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const goToLogin = useCallback(() => {
     clearToken();
@@ -373,6 +434,7 @@ export default function DashboardPage() {
           onRetry={loadLatestJobs}
           onTracked={loadApplications}
         />
+        <MailboxCard notice={mailNotice} onUnauthorized={goToLogin} onSynced={loadApplications} />
         <ApplicationsSection
           state={appsState}
           applications={applications}

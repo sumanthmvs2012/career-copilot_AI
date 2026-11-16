@@ -216,6 +216,17 @@ export default function JobDetails({ job, compact = false, onTracked }) {
           </div>
         </div>
       )}
+      {!compact && job.id != null && (
+        <div className="job-item__interview">
+          <Button
+            variant="secondary"
+            onClick={() => navigate(`/jobs/${encodeURIComponent(job.id)}/interview`)}
+            aria-label={`Interview questions for ${job.title || 'this job'}`}
+          >
+            Interview questions
+          </Button>
+        </div>
+      )}
       {job.id != null && (
         <TrackJobButton jobId={job.id} jobTitle={job.title} onTracked={onTracked} />
       )}

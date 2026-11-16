@@ -974,3 +974,59 @@
   gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
+
+/* Interview questions page */
+.interview-group h3 {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.interview-list {
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
+.interview-list li {
+  margin-bottom: var(--space-2);
+}
+
+/* Submit application panel */
+.submit-panel {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.submit-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* Mailbox card */
+.mailbox__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.reminder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reminder-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}

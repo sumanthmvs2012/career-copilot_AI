@@ -47,6 +47,7 @@ function sampleApplications() {
     submittedBy: 'user',
     emailSent,
     emailSentAt: emailSent ? daysAgo(days, -1) : null,
+    emailClassification: emailSent ? (status === 'rejected' ? 'rejection' : 'other') : null,
     createdAt: daysAgo(days + 1),
     updatedAt: daysAgo(days),
   });
@@ -136,6 +137,26 @@ export function updateApplication(id, { status, coverLetter } = {}) {
       row.status = status;
     }
     if (coverLetter !== undefined) row.coverLetter = coverLetter;
+    row.updatedAt = now;
+    return { ...row };
+  });
+}
+
+// Submits a draft (the cover letter is saved first). Rejects with an ApiError: 409 means the
+// application is not a draft any more, 404 an unknown application. This records the submission in
+// the app only; it does not contact the employer.
+export function submitApplication(id, coverLetter) {
+  const body = coverLetter === undefined ? undefined : { coverLetter };
+  return withAuthHandling(async () => {
+    if (!isMockApplications()) return post(`/applications/${id}/submit`, body);
+    const row = mockStore().find((r) => r.id === id);
+    if (!row) throw mockFail(404, 'Application not found.');
+    if (row.status !== 'draft') throw mockFail(409, 'Only a draft can be submitted.');
+    const now = new Date().toISOString();
+    if (coverLetter !== undefined) row.coverLetter = coverLetter;
+    row.status = 'applied';
+    row.appliedAt = now;
+    row.submittedBy = 'user';
     row.updatedAt = now;
     return { ...row };
   });

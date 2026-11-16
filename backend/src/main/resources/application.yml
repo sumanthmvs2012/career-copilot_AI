@@ -54,3 +54,16 @@ app:
   locations:
     # Re-derives job_locations from each stored free-text location at startup (idempotent, deletes no jobs).
     reparse-on-startup: ${LOCATIONS_REPARSE_ON_STARTUP:true}
+  mail:
+    # All optional: without the four Google/key values the mailbox feature reports configured=false.
+    google-client-id: ${GOOGLE_CLIENT_ID:}
+    google-client-secret: ${GOOGLE_CLIENT_SECRET:}
+    google-redirect-uri: ${GOOGLE_REDIRECT_URI:}
+    # base64 of 32 random bytes, for example: openssl rand -base64 32
+    token-key: ${MAIL_TOKEN_KEY:}
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+    sync-enabled: ${MAIL_SYNC_ENABLED:false}
+    sync-cron: ${MAIL_SYNC_CRON:0 0 * * * *}
+    reminder-days: ${REMINDER_DAYS:7}
+    reminders-enabled: ${REMINDERS_ENABLED:true}
+    reminder-cron: ${REMINDER_CRON:0 30 * * * *}

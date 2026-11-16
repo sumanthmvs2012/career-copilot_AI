@@ -4,6 +4,7 @@ import {
   isMockApplications,
   listApplications,
   resetMockApplications,
+  submitApplication,
   updateApplication,
 } from './applicationsService';
 import { get, post, put } from './apiClient';
@@ -46,6 +47,17 @@ describe('applicationsService (real API)', () => {
     expect(put).toHaveBeenCalledWith('/applications/3', { status: 'offer' });
   });
 
+  it('submits with POST /applications/{id}/submit and the cover letter', async () => {
+    vi.mocked(post).mockResolvedValue({ id: 3, status: 'applied' });
+    await submitApplication(3, 'Dear team');
+    expect(post).toHaveBeenCalledWith('/applications/3/submit', { coverLetter: 'Dear team' });
+  });
+
+  it('passes 409 from submit through', async () => {
+    vi.mocked(post).mockRejectedValue(Object.assign(new Error('x'), { status: 409 }));
+    await expect(submitApplication(3, 'x')).rejects.toMatchObject({ status: 409 });
+  });
+
   it('passes errors through', async () => {
     vi.mocked(post).mockRejectedValue(Object.assign(new Error('x'), { status: 409 }));
     await expect(createApplication({ jobId: 1 })).rejects.toMatchObject({ status: 409 });
@@ -76,6 +88,7 @@ describe('applicationsService (mock)', () => {
           'company',
           'coverLetter',
           'createdAt',
+          'emailClassification',
           'emailSent',
           'emailSentAt',
           'id',
@@ -113,5 +126,18 @@ describe('applicationsService (mock)', () => {
     await expect(updateApplication(99999, { status: 'offer' })).rejects.toMatchObject({
       status: 404,
     });
+  });
+
+  it('submits a draft in memory, saving the cover letter, then rejects a second submit', async () => {
+    const draft = (await listApplications()).find((r) => r.status === 'draft');
+    const done = await submitApplication(draft.id, 'Hello');
+    expect(done.status).toBe('applied');
+    expect(done.coverLetter).toBe('Hello');
+    expect(done.appliedAt).toBeTruthy();
+    await expect(submitApplication(draft.id, 'Hello')).rejects.toMatchObject({
+      status: 409,
+      data: { message: 'Only a draft can be submitted.' },
+    });
+    await expect(submitApplication(99999, 'x')).rejects.toMatchObject({ status: 404 });
   });
 });

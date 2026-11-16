@@ -29,10 +29,14 @@ Part three: the columns => Job matches (V7): id, profile id (foreign key, delete
                                          columns above) are TEXT so H2 and PostgreSQL both work; they may become jsonb with the Phase 5 migration.
                            Applications: id, profile id, job id, resume id, status (draft, applied, interviewing, offer, rejected, withdrawn), cover letter,
                                          submitted at, submitted by (user, auto), created at, updated at.
-                           Interview questions: id, job id, application id, question, category, created at.
-                           Email logs: id, application id, type (employer reply, reminder), classification (rejection, interview, offer, other; replies only),
-                                       subject, occurred at, status.
-                           Mail connections: id, user id, provider (gmail), encrypted refresh token, scope, created at, revoked at.
+                           Interview questions (V8): id, profile id, job id, application id (optional, cleared if the application is deleted), question, category
+                                         (technical, behavioral, role, company, resume gap), position (order within the list), created at. Deleted with the profile or job;
+                                         indexed by profile id and job id.
+                           Email logs (V9): id, application id, type (employer reply, reminder), classification (rejection, interview, offer, other; replies only),
+                                       subject, occurred at, status (replies: received; reminders: new, dismissed), external message id (the Gmail message id),
+                                       created at. Unique on (application id, external message id) so a message is never stored twice; indexed by application id.
+                           Mail connections (V9): id, user id, provider (gmail), encrypted refresh token (cleared on revoke), scope, created at, revoked at,
+                                       last synced at. One active connection per user is enforced in code.
 
 
 Part four: the rules. Every table gets an id as its primary key, and foreign keys link the tables together.

@@ -18,3 +18,7 @@ app:
     boards: ""
   locations:
     reparse-on-startup: false
+  mail:
+    # No scheduled jobs in tests; the mailbox settings stay unset unless a test sets them.
+    sync-enabled: false
+    reminders-enabled: false

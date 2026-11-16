@@ -12,10 +12,13 @@ import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
 import com.careercopilot.jobs.JobRepository;
+import com.careercopilot.mail.EmailLog;
+import com.careercopilot.mail.EmailLogRepository;
 import com.careercopilot.profiles.ProfileRepository;
 import com.careercopilot.resumes.Resume;
 import com.careercopilot.resumes.ResumeRepository;
 import com.jayway.jsonpath.JsonPath;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +56,9 @@ class ApplicationControllerIntegrationTest {
 
     @Autowired
     private ApplicationRepository applications;
+
+    @Autowired
+    private EmailLogRepository emailLogs;
 
     @Autowired
     private RateLimiter rateLimiter;
@@ -303,6 +309,113 @@ class ApplicationControllerIntegrationTest {
         mvc.perform(put("/applications/" + id).header("Authorization", token)
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    private int draft(String token, long jobId) throws Exception {
+        String json = mvc.perform(post("/applications").header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON).content(createBody(jobId, "")))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(json, "$.id");
+    }
+
+    @Test
+    void submitMovesADraftToAppliedWithoutABody() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        int id = draft(token, scrapedJob("Java Dev", "Stripe"));
+
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.status").value("applied"))
+                .andExpect(jsonPath("$.appliedAt").isNotEmpty())
+                .andExpect(jsonPath("$.submittedBy").value("user"))
+                .andExpect(jsonPath("$.jobTitle").value("Java Dev"));
+    }
+
+    @Test
+    void submitSavesTheCoverLetterFromTheBody() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        int id = draft(token, scrapedJob("Java Dev", "Stripe"));
+
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"coverLetter\":\"Dear team\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.coverLetter").value("Dear team"));
+        mvc.perform(get("/applications").header("Authorization", token))
+                .andExpect(jsonPath("$[0].coverLetter").value("Dear team"))
+                .andExpect(jsonPath("$[0].status").value("applied"));
+    }
+
+    @Test
+    void submitTwiceOrAfterAnyOtherStatusReturns409() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        int id = draft(token, scrapedJob("Java Dev", "Stripe"));
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("Only a draft can be submitted."));
+
+        mvc.perform(put("/applications/" + id).header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"withdrawn\"}")).andExpect(status().isOk());
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void submitIsNotFoundForAnotherUsersApplicationAndLeavesItUntouched() throws Exception {
+        String owner = tokenWithProfile("owner@example.com");
+        String other = tokenWithProfile("other@example.com");
+        int id = draft(owner, scrapedJob("Java Dev", "Stripe"));
+
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", other))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/applications/999999/submit").header("Authorization", other))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/applications").header("Authorization", owner))
+                .andExpect(jsonPath("$[0].status").value("draft"));
+    }
+
+    @Test
+    void submitRejectsATooLongCoverLetterAndNeedsAToken() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        int id = draft(token, scrapedJob("Java Dev", "Stripe"));
+
+        mvc.perform(post("/applications/" + id + "/submit").header("Authorization", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"coverLetter\":\"" + "a".repeat(10001) + "\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/applications/" + id + "/submit")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void emailFieldsComeFromEmployerRepliesInEmailLogs() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        int quiet = draft(token, scrapedJob("Quiet", "Stripe"));
+        int replied = draft(token, scrapedJob("Replied", "Acme"));
+        EmailLog older = new EmailLog((long) replied, EmailLog.TYPE_REPLY, Instant.parse("2026-11-10T10:00:00Z"),
+                EmailLog.STATUS_RECEIVED);
+        older.setClassification("other");
+        EmailLog newer = new EmailLog((long) replied, EmailLog.TYPE_REPLY, Instant.parse("2026-11-12T10:00:00Z"),
+                EmailLog.STATUS_RECEIVED);
+        newer.setClassification("interview");
+        // A reminder is not an employer reply, so it must not flip emailSent.
+        EmailLog reminder = new EmailLog((long) quiet, EmailLog.TYPE_REMINDER, Instant.parse("2026-11-13T10:00:00Z"),
+                EmailLog.STATUS_NEW);
+        emailLogs.saveAll(java.util.List.of(older, newer, reminder));
+
+        mvc.perform(get("/applications").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].jobTitle").value("Replied"))
+                .andExpect(jsonPath("$[0].emailSent").value(true))
+                .andExpect(jsonPath("$[0].emailSentAt").value("2026-11-12T10:00:00Z"))
+                .andExpect(jsonPath("$[0].emailClassification").value("interview"))
+                .andExpect(jsonPath("$[1].emailSent").value(false))
+                .andExpect(jsonPath("$[1].emailSentAt").isEmpty())
+                .andExpect(jsonPath("$[1].emailClassification").isEmpty());
     }
 
     @Test

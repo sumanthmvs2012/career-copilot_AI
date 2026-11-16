@@ -109,4 +109,5 @@ frontend/  src/{pages,components,services,utils}
 4. Done: dashboard (early version) and profile page; profiles migration and `GET/PUT /profile`.
 5. Done: resume upload (`resumes` migration, `POST /resumes`, local `StorageService`, text extraction, upload page and dashboard card).
 6. Done: jobs (`POST /jobs/match`, `GET /jobs` with filters, match page, scraper) and applications (V6 migration, `POST/GET/PUT /applications`, real dashboard table, "Track this job").
-7. Next: Phase 5 AI (migration, Testcontainers, real match), email tracking, CI. See docs/handoff.md "Next steps".
+7. Done (2026-11-16): rule-based interview questions (V8), submit endpoint, Gmail read-only email tracking + reminders (V9; needs Google credentials to run live).
+8. Next: Claude + Voyage embeddings (Phase 5 migration, Testcontainers), CI. See docs/handoff.md "Next steps".

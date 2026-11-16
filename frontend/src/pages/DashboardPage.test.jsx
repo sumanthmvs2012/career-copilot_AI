@@ -1,10 +1,11 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardPage from './DashboardPage';
 import {
   APPLICATION_STATUSES,
+  submitApplication,
   createApplication,
   isMockApplications,
   listApplications,
@@ -13,25 +14,54 @@ import {
 import { getJobFacets, listJobs } from '../services/jobService';
 import { listResumes } from '../services/resumeService';
 import { getProfile } from '../services/profileService';
+import {
+  disconnectMail,
+  dismissReminder,
+  getMailConnection,
+  getReminders,
+  startMailConnection,
+  syncMail,
+} from '../services/mailService';
 import { clearToken, getToken, setToken } from '../utils/authToken';
 
 vi.mock('../services/profileService', () => ({ getProfile: vi.fn() }));
 vi.mock('../services/jobService', () => ({ listJobs: vi.fn(), getJobFacets: vi.fn() }));
+vi.mock('../services/mailService', () => ({
+  getMailConnection: vi.fn(),
+  startMailConnection: vi.fn(),
+  disconnectMail: vi.fn(),
+  syncMail: vi.fn(),
+  getReminders: vi.fn(),
+  dismissReminder: vi.fn(),
+}));
 vi.mock('../services/resumeService', () => ({ listResumes: vi.fn() }));
 vi.mock('../services/applicationsService', () => ({
   APPLICATION_STATUSES: ['draft', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'],
   listApplications: vi.fn(),
   createApplication: vi.fn(),
   updateApplication: vi.fn(),
+  submitApplication: vi.fn(),
   isMockApplications: vi.fn(),
 }));
 
-function renderDashboard() {
+function LocationProbe() {
+  return <output data-testid="search">{useLocation().search}</output>;
+}
+
+function renderDashboard(path = '/dashboard') {
   const user = userEvent.setup();
   render(
-    <MemoryRouter initialEntries={['/dashboard']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route
+          path="/dashboard"
+          element={
+            <>
+              <DashboardPage />
+              <LocationProbe />
+            </>
+          }
+        />
         <Route path="/login" element={<p>Login page</p>} />
         <Route path="/profile" element={<p>Profile page</p>} />
         <Route path="/match" element={<p>Match page</p>} />
@@ -73,6 +103,15 @@ describe('DashboardPage', () => {
     vi.mocked(isMockApplications).mockReset().mockReturnValue(false);
     vi.mocked(createApplication).mockReset();
     vi.mocked(updateApplication).mockReset();
+    vi.mocked(submitApplication).mockReset();
+    vi.mocked(getMailConnection)
+      .mockReset()
+      .mockResolvedValue({ configured: true, connection: null });
+    vi.mocked(getReminders).mockReset().mockResolvedValue([]);
+    vi.mocked(startMailConnection).mockReset();
+    vi.mocked(disconnectMail).mockReset();
+    vi.mocked(syncMail).mockReset();
+    vi.mocked(dismissReminder).mockReset();
     vi.mocked(listResumes).mockReset().mockResolvedValue([]);
     vi.mocked(listJobs).mockReset().mockResolvedValue([]);
     vi.mocked(getJobFacets).mockReset().mockResolvedValue(FACETS);
@@ -104,7 +143,7 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('link', { name: 'Edit profile' })).toHaveAttribute('href', '/profile');
 
     expect(await screen.findByText('No applications yet')).toBeInTheDocument();
-    for (const name of ['Job', 'Status', 'Applied', 'Email sent', 'When']) {
+    for (const name of ['Job', 'Status', 'Applied', 'Email sent', 'When', 'Actions']) {
       expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
     }
   });
@@ -547,5 +586,110 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Login page')).toBeInTheDocument();
     expect(getToken()).toBeNull();
+  });
+
+  describe('submit application', () => {
+    const DRAFT = {
+      id: 7,
+      jobId: 1,
+      jobTitle: 'Engineer',
+      company: 'Acme',
+      status: 'draft',
+      coverLetter: 'Old letter',
+      appliedAt: null,
+      emailSent: false,
+      emailSentAt: null,
+    };
+
+    it('shows Edit & submit only on drafts', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([
+        DRAFT,
+        { ...DRAFT, id: 8, jobTitle: 'Analyst', status: 'applied' },
+      ]);
+      renderDashboard();
+
+      expect(await screen.findByRole('button', { name: 'Edit and submit Engineer' })).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Edit and submit Analyst' })).toBeNull();
+    });
+
+    it('opens the panel, submits after confirming and updates the row', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([DRAFT]);
+      vi.mocked(submitApplication).mockResolvedValue({
+        ...DRAFT,
+        status: 'applied',
+        appliedAt: '2026-11-16T10:00:00Z',
+      });
+      const user = renderDashboard();
+
+      await user.click(await screen.findByRole('button', { name: 'Edit and submit Engineer' }));
+      expect(screen.getByLabelText('Cover letter')).toHaveValue('Old letter');
+      await user.click(screen.getByRole('button', { name: 'Submit application' }));
+      await user.click(screen.getByRole('button', { name: 'Yes, mark as applied' }));
+
+      expect(submitApplication).toHaveBeenCalledWith(7, 'Old letter');
+      expect(await screen.findByText('Marked as applied.')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Cover letter')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Edit and submit Engineer' })).toBeNull();
+    });
+  });
+
+  describe('email columns', () => {
+    it('shows the reply classification next to Email sent', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([
+        {
+          id: 7,
+          jobTitle: 'Engineer',
+          company: 'Acme',
+          status: 'applied',
+          emailSent: true,
+          emailSentAt: '2026-11-01T10:05:00Z',
+          emailClassification: 'rejection',
+        },
+      ]);
+      renderDashboard();
+
+      const badge = await screen.findByText('rejection');
+      expect(badge).toHaveClass('status-badge--danger');
+    });
+  });
+
+  describe('mailbox card', () => {
+    it('shows the connect note and a status message from ?mail=connected, then cleans the URL', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      renderDashboard('/dashboard?mail=connected');
+
+      expect(await screen.findByText('Gmail is connected.')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('button', { name: 'Connect Gmail (read-only)' }),
+      ).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(/^$/));
+    });
+
+    it('shows an error message from ?mail=error', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      renderDashboard('/dashboard?mail=error');
+
+      expect(
+        await screen.findByText('We could not connect Gmail. Please try again.'),
+      ).toBeVisible();
+    });
+
+    it('reloads applications after Check now finds replies', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(getMailConnection).mockResolvedValue({
+        configured: true,
+        connection: { id: 3, provider: 'gmail', createdAt: '2026-11-01T00:00:00Z' },
+      });
+      vi.mocked(syncMail).mockResolvedValue({ checked: 5, newReplies: 2 });
+      const user = renderDashboard();
+
+      await user.click(await screen.findByRole('button', { name: 'Check now' }));
+
+      expect(await screen.findByText('2 new replies')).toBeInTheDocument();
+      await waitFor(() => expect(listApplications).toHaveBeenCalledTimes(2));
+    });
   });
 });

@@ -1,11 +1,18 @@
 package com.careercopilot.common.web;
 
 import com.careercopilot.applications.ApplicationAlreadyExistsException;
+import com.careercopilot.applications.ApplicationNotDraftException;
 import com.careercopilot.applications.ApplicationNotFoundException;
 import com.careercopilot.auth.EmailAlreadyUsedException;
 import com.careercopilot.auth.InvalidCredentialsException;
 import com.careercopilot.auth.PasswordTooLongException;
 import com.careercopilot.jobs.InvalidJobQueryException;
+import com.careercopilot.mail.MailAlreadyConnectedException;
+import com.careercopilot.mail.MailConnectionNotFoundException;
+import com.careercopilot.mail.MailNotConfiguredException;
+import com.careercopilot.mail.MailNotConnectedException;
+import com.careercopilot.mail.MailProviderException;
+import com.careercopilot.mail.ReminderNotFoundException;
 import com.careercopilot.matches.JobNotFoundException;
 import com.careercopilot.matches.MatchNotFoundException;
 import com.careercopilot.matches.NoBaseResumeException;
@@ -116,6 +123,45 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ApplicationAlreadyExistsException.class)
     ResponseEntity<ErrorResponse> handleApplicationExists(ApplicationAlreadyExistsException ex) {
         return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "You already track this job."));
+    }
+
+    @ExceptionHandler(ApplicationNotDraftException.class)
+    ResponseEntity<ErrorResponse> handleNotDraft(ApplicationNotDraftException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Only a draft can be submitted."));
+    }
+
+    @ExceptionHandler(MailNotConfiguredException.class)
+    ResponseEntity<ErrorResponse> handleMailNotConfigured(MailNotConfiguredException ex) {
+        return respond(HttpStatus.SERVICE_UNAVAILABLE,
+                new ErrorResponse(503, "Mailbox connection is not configured."));
+    }
+
+    @ExceptionHandler(MailAlreadyConnectedException.class)
+    ResponseEntity<ErrorResponse> handleMailAlreadyConnected(MailAlreadyConnectedException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Your mailbox is already connected."));
+    }
+
+    @ExceptionHandler(MailNotConnectedException.class)
+    ResponseEntity<ErrorResponse> handleMailNotConnected(MailNotConnectedException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Connect your mailbox first."));
+    }
+
+    @ExceptionHandler(MailConnectionNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleMailConnectionNotFound(MailConnectionNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Mail connection not found."));
+    }
+
+    @ExceptionHandler(ReminderNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleReminderNotFound(ReminderNotFoundException ex) {
+        return respond(HttpStatus.NOT_FOUND, new ErrorResponse(404, "Reminder not found."));
+    }
+
+    @ExceptionHandler(MailProviderException.class)
+    ResponseEntity<ErrorResponse> handleMailProvider(MailProviderException ex) {
+        // The message is ours and carries no provider details; only the fixed text goes to the client.
+        log.warn("Mail provider call failed: {}", ex.getMessage());
+        return respond(HttpStatus.BAD_GATEWAY,
+                new ErrorResponse(502, "Could not reach your mailbox. Try again later."));
     }
 
     @ExceptionHandler(JobNotFoundException.class)

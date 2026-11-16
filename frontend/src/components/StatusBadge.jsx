@@ -13,6 +13,7 @@ const VARIANTS = {
   pending: 'warning',
   withdrawn: 'warning',
   rejected: 'danger',
+  rejection: 'danger',
   declined: 'danger',
   failed: 'danger',
   match: 'success',

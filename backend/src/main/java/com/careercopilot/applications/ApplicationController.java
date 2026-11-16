@@ -43,6 +43,13 @@ public class ApplicationController {
         return applicationService.update(userId(jwt), id, request);
     }
 
+    /** The body is optional: a cover letter in it is saved first, then the draft is submitted. */
+    @PostMapping("/{id}/submit")
+    public ApplicationResponse submit(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+            @Valid @RequestBody(required = false) ApplicationSubmitRequest request) {
+        return applicationService.submit(userId(jwt), id, request);
+    }
+
     private static Long userId(Jwt jwt) {
         return Long.parseLong(jwt.getSubject());
     }
