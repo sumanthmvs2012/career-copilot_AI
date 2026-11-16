@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '../components/Alert';
 import Avatar from '../components/Avatar';
 import Button from '../components/Button';
+import EmptyState from '../components/EmptyState';
+import Icon from '../components/Icon';
 import JobDetails from '../components/JobDetails';
 import JobFilters from '../components/JobFilters';
 import MailboxCard from '../components/MailboxCard';
@@ -19,6 +21,7 @@ import { listJobs } from '../services/jobService';
 import { listResumes } from '../services/resumeService';
 import { getProfile } from '../services/profileService';
 import { EMPTY_PLACE_FILTERS } from '../utils/jobFilters';
+import { isTailoredCopy } from '../utils/resumes';
 import { clearToken } from '../utils/authToken';
 import { formatRelativeTime } from '../utils/relativeTime';
 
@@ -33,6 +36,27 @@ const MAIL_NOTICES = {
   connected: { kind: 'success', text: 'Gmail is connected.' },
   error: { kind: 'error', text: 'We could not connect Gmail. Please try again.' },
 };
+
+// "Good morning, Jane": first name only, falling back to a plain welcome.
+function greeting(fullName, now = new Date()) {
+  const hour = now.getHours();
+  const part = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const first = (fullName ?? '').trim().split(/\s+/)[0];
+  return first ? `${part}, ${first}` : 'Welcome back';
+}
+
+// A number tile in the hero; value null means still loading or unavailable, shown as a dash.
+function StatTile({ icon, label, value }) {
+  return (
+    <li className="stat-tile">
+      <span className="stat-tile__icon">
+        <Icon name={icon} size={18} />
+      </span>
+      <span className="stat-tile__value">{value ?? '–'}</span>
+      <span className="stat-tile__label">{label}</span>
+    </li>
+  );
+}
 
 function ProfileCard({ state, profile, onRetry }) {
   if (state === 'loading') {
@@ -50,10 +74,9 @@ function ProfileCard({ state, profile, onRetry }) {
   }
   if (state === 'empty') {
     return (
-      <>
-        <p>You have not set up your profile yet.</p>
-        <Link to="/profile">Create your profile</Link>
-      </>
+      <EmptyState icon="user" action={<Link to="/profile">Create your profile</Link>}>
+        You have not set up your profile yet.
+      </EmptyState>
     );
   }
   return (
@@ -89,17 +112,18 @@ function ResumeCard({ state, resume, count, onRetry }) {
   }
   if (state === 'empty') {
     return (
-      <>
-        <p>You have not uploaded a resume yet.</p>
-        <Link to="/resume">Upload your resume</Link>
-      </>
+      <EmptyState icon="file" action={<Link to="/resume">Upload your resume</Link>}>
+        You have not uploaded a resume yet.
+      </EmptyState>
     );
   }
   return (
     <>
       <dl className="detail-list">
         <dt>File</dt>
-        <dd>{resume.fileName}</dd>
+        <dd className="resume-file" title={resume.fileName}>
+          {resume.fileName}
+        </dd>
         <dt>Uploaded</dt>
         <dd>{new Date(resume.createdAt).toLocaleDateString()}</dd>
         <dt>Resumes</dt>
@@ -114,7 +138,9 @@ function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry, onT
   const filtered = Object.values(filters).some(Boolean);
   return (
     <section className="card" aria-labelledby="latest-jobs-heading">
-      <h2 id="latest-jobs-heading">Latest jobs</h2>
+      <h2 id="latest-jobs-heading">
+        <Icon name="briefcase" size={20} /> Latest jobs
+      </h2>
       <JobFilters scope="scraped" compact value={filters} onChange={onFiltersChange} />
       {state === 'loading' && <p role="status">Loading latest jobs…</p>}
       {state === 'error' && (
@@ -127,20 +153,31 @@ function LatestJobsSection({ state, jobs, filters, onFiltersChange, onRetry, onT
       )}
       {state === 'empty' && filtered && (
         <>
-          <p>No jobs match these filters.</p>
-          <Button variant="secondary" onClick={() => onFiltersChange({ ...EMPTY_PLACE_FILTERS })}>
-            Clear filters
-          </Button>
+          <EmptyState
+            icon="briefcase"
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => onFiltersChange({ ...EMPTY_PLACE_FILTERS })}
+              >
+                Clear filters
+              </Button>
+            }
+          >
+            No jobs match these filters.
+          </EmptyState>
         </>
       )}
       {state === 'empty' && !filtered && (
-        <p>No jobs collected yet. New postings appear here after the hourly scan.</p>
+        <EmptyState icon="briefcase">
+          No jobs collected yet. New postings appear here after the hourly scan.
+        </EmptyState>
       )}
       {state === 'success' && (
-        <ul className="job-list job-list--latest">
+        <ul className="job-rows">
           {jobs.map((job) => (
             <li key={job.id}>
-              <JobDetails job={job} onTracked={onTracked} />
+              <JobDetails job={job} variant="row" onTracked={onTracked} />
             </li>
           ))}
         </ul>
@@ -259,7 +296,9 @@ function ApplicationsSection({ state, applications, onRetry, onUnauthorized }) {
   return (
     <section className="card" aria-labelledby="applications-heading">
       <div className="card__head">
-        <h2 id="applications-heading">Applications</h2>
+        <h2 id="applications-heading">
+          <Icon name="bookmark" size={20} /> Applications
+        </h2>
         {isMockApplications() && (
           <span className="demo-badge" title="Sample data for previewing the layout">
             Demo data
@@ -295,7 +334,11 @@ function ApplicationsSection({ state, applications, onRetry, onUnauthorized }) {
           </table>
         </div>
       )}
-      {state === 'empty' && <p className="muted">No applications yet</p>}
+      {state === 'empty' && (
+        <EmptyState icon="bookmark">
+          <span className="muted">No applications yet</span>
+        </EmptyState>
+      )}
     </section>
   );
 }
@@ -351,9 +394,11 @@ export default function DashboardPage() {
     setResumeState('loading');
     try {
       const rows = await listResumes();
-      const base = rows.find((r) => r.isBase) ?? rows[0] ?? null;
+      // Tailored copies are not uploads: they are neither shown here nor counted.
+      const uploads = rows.filter((r) => !isTailoredCopy(r));
+      const base = uploads.find((r) => r.isBase) ?? uploads[0] ?? null;
       setResume(base);
-      setResumeCount(rows.length);
+      setResumeCount(uploads.length);
       setResumeState(base ? 'success' : 'empty');
     } catch (error) {
       if (error?.status === 401) return goToLogin();
@@ -405,11 +450,43 @@ export default function DashboardPage() {
 
   return (
     <main className="page">
-      <header className="page__header">
-        <h1>Dashboard</h1>
-        <Button variant="secondary" onClick={goToLogin}>
-          Log out
-        </Button>
+      <header className="hero">
+        <div className="hero__top">
+          <div>
+            <h1 className="hero__eyebrow">Dashboard</h1>
+            <p className="hero__greeting">{greeting(profile?.fullName)}</p>
+            <p className="hero__sub">Here is where your job search stands today.</p>
+          </div>
+          <Button variant="secondary" className="hero__logout" onClick={goToLogin}>
+            Log out
+          </Button>
+        </div>
+        <ul className="hero__stats" aria-label="Quick stats">
+          <StatTile
+            icon="bookmark"
+            label="Applications"
+            value={appsState === 'loading' || appsState === 'error' ? null : applications.length}
+          />
+          <StatTile
+            icon="mail"
+            label="Replies"
+            value={
+              appsState === 'loading' || appsState === 'error'
+                ? null
+                : applications.filter((app) => app.emailSent).length
+            }
+          />
+          <StatTile
+            icon="briefcase"
+            label="Latest jobs"
+            value={latestState === 'success' ? latestJobs.length : null}
+          />
+          <StatTile
+            icon="file"
+            label="Resumes"
+            value={resumeState === 'loading' || resumeState === 'error' ? null : resumeCount}
+          />
+        </ul>
       </header>
 
       <div className="page__grid">
@@ -418,7 +495,9 @@ export default function DashboardPage() {
           <ProfileCard state={profileState} profile={profile} onRetry={loadProfile} />
         </section>
         <section className="card" aria-labelledby="resume-heading">
-          <h2 id="resume-heading">Your resume</h2>
+          <h2 id="resume-heading">
+            <Icon name="file" size={20} /> Your resume
+          </h2>
           <ResumeCard
             state={resumeState}
             resume={resume}
@@ -426,6 +505,7 @@ export default function DashboardPage() {
             onRetry={loadResume}
           />
         </section>
+        <MailboxCard notice={mailNotice} onUnauthorized={goToLogin} onSynced={loadApplications} />
         <LatestJobsSection
           state={latestState}
           jobs={latestJobs}
@@ -434,7 +514,6 @@ export default function DashboardPage() {
           onRetry={loadLatestJobs}
           onTracked={loadApplications}
         />
-        <MailboxCard notice={mailNotice} onUnauthorized={goToLogin} onSynced={loadApplications} />
         <ApplicationsSection
           state={appsState}
           applications={applications}

@@ -83,7 +83,6 @@ const FACETS = {
   ],
   countries: [{ value: 'United States', count: 90 }],
   states: [{ value: 'CA', count: 50 }],
-  cities: [{ value: 'San Francisco', count: 30 }],
 };
 
 const PROFILE = {
@@ -169,6 +168,56 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yes')).toBeInTheDocument();
     expect(screen.queryByText('No applications yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Demo data')).not.toBeInTheDocument();
+  });
+
+  describe('hero', () => {
+    it('greets the user by first name and shows quick stats', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listApplications).mockResolvedValue([
+        { id: 1, jobTitle: 'A', status: 'applied', emailSent: true },
+        { id: 2, jobTitle: 'B', status: 'draft', emailSent: false },
+      ]);
+      vi.mocked(listResumes).mockResolvedValue([{ id: 1, fileName: 'cv.pdf', isBase: true }]);
+      renderDashboard();
+
+      expect(await screen.findByText(/^Good (morning|afternoon|evening), Jane$/)).toBeVisible();
+      const stats = screen.getByRole('list', { name: 'Quick stats' });
+      await waitFor(() => {
+        const tiles = within(stats).getAllByRole('listitem');
+        expect(tiles[0]).toHaveTextContent('2Applications');
+        expect(tiles[1]).toHaveTextContent('1Replies');
+        expect(tiles[3]).toHaveTextContent('1Resumes');
+      });
+    });
+
+    it('falls back to a plain welcome and dashes while loading', () => {
+      vi.mocked(getProfile).mockReturnValue(new Promise(() => {}));
+      vi.mocked(listApplications).mockReturnValue(new Promise(() => {}));
+      renderDashboard();
+      expect(screen.getByText('Welcome back')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('list', { name: 'Quick stats' })).getAllByText('–'),
+      ).toHaveLength(4);
+    });
+
+    it('lists latest jobs as rows with the actions beside the title', async () => {
+      vi.mocked(getProfile).mockResolvedValue(PROFILE);
+      vi.mocked(listJobs).mockResolvedValue([
+        {
+          id: 5,
+          title: 'Data Analyst',
+          companyName: 'Acme',
+          category: 'Data',
+          source: 'greenhouse',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      renderDashboard();
+      expect(await screen.findByRole('heading', { name: 'Data Analyst' })).toBeInTheDocument();
+      expect(screen.getByText('Data')).toHaveClass('job-chip');
+      expect(screen.getByRole('group', { name: 'Actions for Data Analyst' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Tailor my resume' })).toBeInTheDocument();
+    });
   });
 
   describe('application status and tracking', () => {
@@ -350,6 +399,16 @@ describe('DashboardPage', () => {
       expect(await screen.findByText('1 of 2 resumes')).toBeInTheDocument();
     });
 
+    it('does not count tailored copies and keeps the long file name in a title', async () => {
+      const long = { ...RESUME, fileName: `${'very-long-name-'.repeat(8)}.pdf` };
+      const copy = { id: 9, fileName: 'tailored.pdf', isBase: false, jobId: 5, baseResumeId: 3 };
+      vi.mocked(listResumes).mockResolvedValue([copy, long, { ...copy, id: 10 }]);
+      renderDashboard();
+      expect(await screen.findByText('1 of 2 resumes')).toBeInTheDocument();
+      expect(screen.getByText(long.fileName)).toHaveAttribute('title', long.fileName);
+      expect(screen.queryByText('tailored.pdf')).not.toBeInTheDocument();
+    });
+
     it('shows an error and retries', async () => {
       vi.mocked(listResumes).mockRejectedValueOnce(apiError(500)).mockResolvedValue([RESUME]);
       const user = renderDashboard();
@@ -414,7 +473,7 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Match page')).toBeInTheDocument();
     });
 
-    it('has the four compact filters and refetches only the jobs when one changes', async () => {
+    it('has the three compact filters and refetches only the jobs when one changes', async () => {
       vi.mocked(listJobs).mockResolvedValue(SCRAPED);
       const user = renderDashboard();
       await screen.findByText('Platform Engineer');
@@ -423,13 +482,12 @@ describe('DashboardPage', () => {
         category: '',
         country: '',
         state: '',
-        city: '',
       });
-      for (const label of ['Category', 'Country', 'State', 'City']) {
+      for (const label of ['Category', 'Country', 'State']) {
         expect(screen.getByLabelText(label)).toBeInTheDocument();
       }
       expect(screen.getByLabelText('State')).toBeDisabled();
-      expect(screen.getAllByRole('option', { name: 'Select a country first' })).toHaveLength(2);
+      expect(screen.getAllByRole('option', { name: 'Select a country first' })).toHaveLength(1);
 
       await user.selectOptions(screen.getByLabelText('Country'), 'United States');
       await waitFor(() =>
@@ -478,7 +536,6 @@ describe('DashboardPage', () => {
           category: 'Design',
           country: 'Canada',
           state: '',
-          city: '',
         }),
       );
       expect(await screen.findByRole('option', { name: 'ON (2)' })).toBeInTheDocument();

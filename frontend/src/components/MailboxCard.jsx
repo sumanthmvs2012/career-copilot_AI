@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import Alert from './Alert';
 import Button from './Button';
+import EmptyState from './EmptyState';
+import Icon from './Icon';
 import {
   disconnectMail,
   dismissReminder,
@@ -148,7 +150,9 @@ export default function MailboxCard({ notice, onUnauthorized, onSynced }) {
 
   return (
     <section className="card" aria-labelledby="mailbox-heading">
-      <h2 id="mailbox-heading">Mailbox</h2>
+      <h2 id="mailbox-heading">
+        <Icon name="mail" size={20} /> Mailbox
+      </h2>
       {notice?.text && <Alert variant={notice.kind}>{notice.text}</Alert>}
       {state === 'loading' && <p role="status">Loading mailbox…</p>}
       {state === 'error' && (
@@ -236,7 +240,7 @@ export default function MailboxCard({ notice, onUnauthorized, onSynced }) {
         </>
       )}
       {remindersState === 'ready' && reminders.length === 0 && (
-        <p className="muted">No reminders right now.</p>
+        <EmptyState icon="check">No reminders right now.</EmptyState>
       )}
       {remindersState === 'ready' && reminders.length > 0 && (
         <ul className="reminder-list">

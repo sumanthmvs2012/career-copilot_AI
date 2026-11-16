@@ -329,7 +329,7 @@ describe('JobDetails tailoring', () => {
     const user = renderWithRoutes();
     await user.click(screen.getByRole('button', { name: 'Get suggestions' }));
     expect(await screen.findByText(/add kafka to your resume/i)).toBeInTheDocument();
-    expect(screen.getByText('Skills to add')).toBeInTheDocument();
+    expect(screen.getByText('Add a skill')).toBeInTheDocument();
     expect(screen.getByText('Headline')).toBeInTheDocument();
     expect(getSuggestions).toHaveBeenCalledWith(3, 1);
     expect(tailorResume).not.toHaveBeenCalled();

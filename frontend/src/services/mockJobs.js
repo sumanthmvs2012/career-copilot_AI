@@ -256,25 +256,24 @@ function contains(value, text) {
 
 const same = (a, b) => (a ?? '').toLowerCase() === (b ?? '').toLowerCase();
 
-// country/state/city must all match on the same location row.
-function matchesPlace(job, { country, state, city }) {
-  if (!country && !state && !city) return true;
+// country/state must all match on the same location row.
+function matchesPlace(job, { country, state }) {
+  if (!country && !state) return true;
   return (job.locations ?? []).some(
     (row) =>
       (!country || same(row.country, country)) &&
-      (!state || same(row.state, state)) &&
-      (!city || same(row.city, city)),
+      (!state || same(row.state, state)),
   );
 }
 
 function matchesFilters(
   job,
-  { q, source, remoteType, location, postedWithin, category, country, state, city },
+  { q, source, remoteType, location, postedWithin, category, country, state },
 ) {
   const postedMs = Date.parse(job.postedAt || job.createdAt);
   return (
     (!category || same(job.category, category)) &&
-    matchesPlace(job, { country, state, city }) &&
+    matchesPlace(job, { country, state }) &&
     (!q || contains(job.title, q) || contains(job.companyName, q)) &&
     (!source || job.source === source) &&
     (!remoteType || job.remoteType === remoteType) &&
@@ -311,7 +310,7 @@ function tally(entries) {
 }
 
 // Facets for the jobs visible in the scope, cross-filtered like the backend: each list applies
-// every active filter except its own dimension. Cities are capped at 100.
+// every active filter except its own dimension.
 export async function mockJobFacets({ scope = 'scraped', ...filters } = {}) {
   await delayAndAuthorize();
   const jobs = scope === 'pasted' ? storedJobs : scrapedJobs();
@@ -331,6 +330,5 @@ export async function mockJobFacets({ scope = 'scraped', ...filters } = {}) {
     categories: tally(values('category')),
     countries: tally(values('country')),
     states: tally(values('state')),
-    cities: tally(values('city')).slice(0, 100),
   };
 }

@@ -54,4 +54,11 @@ describe('TrackJobButton', () => {
     await user.click(screen.getByRole('button', { name: /Track this job/ }));
     expect(await screen.findByText('Tracked')).toBeInTheDocument();
   });
+
+  it('supports a short visible label and the small size', () => {
+    render(<TrackJobButton jobId={9} jobTitle="Dev" label="Track" small />);
+    const button = screen.getByRole('button', { name: /Track this job: Dev/ });
+    expect(button).toHaveTextContent('Track');
+    expect(button).toHaveClass('btn--sm');
+  });
 });

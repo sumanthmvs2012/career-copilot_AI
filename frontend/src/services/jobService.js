@@ -63,7 +63,6 @@ export function listJobs({
   category,
   country,
   state,
-  city,
 } = {}) {
   const filters = {
     scope: optional(scope),
@@ -77,7 +76,6 @@ export function listJobs({
     category: optional(category),
     country: optional(country),
     state: optional(state),
-    city: optional(city),
   };
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -91,7 +89,7 @@ export function listJobs({
   );
 }
 
-// Resolves {categories, countries, states, cities}, each [{value, count}] most common first.
+// Resolves {categories, countries, states}, each [{value, count}] most common first.
 // Accepts every filter listJobs does (except paging); each list is computed server-side with all
 // active filters applied except its own dimension. Empty values are never sent.
 export function getJobFacets({
@@ -104,7 +102,6 @@ export function getJobFacets({
   postedWithin,
   country,
   state,
-  city,
 } = {}) {
   const filters = {
     scope: optional(scope),
@@ -116,7 +113,6 @@ export function getJobFacets({
     postedWithin: postedWithin ? String(postedWithin) : undefined,
     country: optional(country),
     state: optional(state),
-    city: optional(city),
   };
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {

@@ -90,4 +90,16 @@ describe('MatchResult', () => {
     rerender(<MatchResult match={null} />);
     expect(screen.getByText('No match yet.')).toBeInTheDocument();
   });
+
+  it('draws a circular gauge that fills in proportion to the score', () => {
+    const { container } = render(<MatchResult match={{ ...MATCH, score: 25 }} />);
+    const fill = container.querySelector('.match-gauge__fill');
+    const circumference = 2 * Math.PI * 34;
+    expect(Number(fill.getAttribute('stroke-dashoffset'))).toBeCloseTo(circumference * 0.75, 3);
+    expect(container.querySelector('.match-gauge svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('meter')).toHaveAttribute(
+      'aria-valuetext',
+      '25 out of 100, Weak match',
+    );
+  });
 });

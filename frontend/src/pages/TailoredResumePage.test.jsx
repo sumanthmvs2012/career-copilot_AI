@@ -66,7 +66,7 @@ describe('TailoredResumePage', () => {
     expect(screen.getByText('Tailored for Backend Engineer at Acme')).toBeInTheDocument();
     expect(screen.getByLabelText('Tailored resume text')).toHaveTextContent('Original text');
     expect(getResume).toHaveBeenCalledWith('5');
-    expect(screen.getByText('Skills to add')).toBeInTheDocument();
+    expect(screen.getByText('Add a skill')).toBeInTheDocument();
     expect(screen.getAllByRole('checkbox')).toHaveLength(3);
     expect(screen.getByRole('link', { name: 'Back to your resumes' })).toHaveAttribute(
       'href',

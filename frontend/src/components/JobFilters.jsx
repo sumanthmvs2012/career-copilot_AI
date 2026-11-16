@@ -4,9 +4,9 @@ import { EMPTY_PLACE_FILTERS } from '../utils/jobFilters';
 import Button from './Button';
 import Select from './Select';
 
-const NO_FACETS = { categories: [], countries: [], states: [], cities: [] };
+const NO_FACETS = { categories: [], countries: [], states: [] };
 const TEXT_DEBOUNCE_MS = 300;
-const PLACE_KEYS = ['category', 'country', 'state', 'city'];
+const PLACE_KEYS = ['category', 'country', 'state'];
 
 function toOptions(allLabel, facets, current) {
   const options = [
@@ -28,12 +28,8 @@ function pruneSelection(value, facets) {
   const next = { ...value };
   if (next.category && !has(facets.categories, next.category)) next.category = '';
   if (next.country && !has(facets.countries, next.country)) next.country = '';
-  if (!next.country) {
-    next.state = '';
-    next.city = '';
-  }
+  if (!next.country) next.state = '';
   if (next.state && !has(facets.states, next.state)) next.state = '';
-  if (next.city && !has(facets.cities, next.city)) next.city = '';
   return next;
 }
 
@@ -47,8 +43,8 @@ function useDebounced(value, delay) {
   return debounced;
 }
 
-// Category, country, state and city filters fed by /jobs/facets. value and the onChange argument
-// are {category, country, state, city}. `others` carries the page's other active filters
+// Category, country and state filters fed by /jobs/facets. value and the onChange argument
+// are {category, country, state}. `others` carries the page's other active filters
 // (q, location, source, remoteType, postedWithin) so every facet list reflects all of them except
 // its own dimension. Facet loading problems never block the job list.
 export default function JobFilters({
@@ -59,7 +55,7 @@ export default function JobFilters({
   compact = false,
   showClear = true,
 }) {
-  const { category, country, state, city } = value;
+  const { category, country, state } = value;
   const { source = '', remoteType = '', postedWithin = '' } = others;
   const q = useDebounced(others.q ?? '', TEXT_DEBOUNCE_MS);
   const location = useDebounced(others.location ?? '', TEXT_DEBOUNCE_MS);
@@ -87,7 +83,6 @@ export default function JobFilters({
       category,
       country,
       state,
-      city,
     })
       .then((result) => {
         if (!current) return;
@@ -119,20 +114,18 @@ export default function JobFilters({
     category,
     country,
     state,
-    city,
     reloadCount,
   ]);
 
-  const stateDisabled = !country || facets.states.length === 0;
-  const cityDisabled = !country || facets.cities.length === 0;
+  // Enabled as soon as a country is chosen; only a finished load with no states disables it.
+  const noStates = Boolean(country) && !loading && !failed && facets.states.length === 0;
+  const stateDisabled = !country || noStates;
   let stateAll = 'All states';
   if (!country) stateAll = 'Select a country first';
-  else if (stateDisabled) stateAll = 'No states available';
-  let cityAll = 'All cities';
-  if (!country) cityAll = 'Select a country first';
-  else if (cityDisabled) cityAll = 'No cities available';
+  else if (noStates) stateAll = 'No states available';
+  else if (loading && facets.states.length === 0) stateAll = 'Loading states…';
 
-  const hasFilters = Boolean(category || country || state || city);
+  const hasFilters = Boolean(category || country || state);
 
   return (
     <div
@@ -151,7 +144,7 @@ export default function JobFilters({
           options={toOptions('All countries', facets.countries, country)}
           value={country}
           onChange={(event) =>
-            onChange({ ...value, country: event.target.value, state: '', city: '' })
+            onChange({ ...value, country: event.target.value, state: '' })
           }
         />
         <Select
@@ -159,14 +152,7 @@ export default function JobFilters({
           options={toOptions(stateAll, facets.states, state)}
           value={state}
           disabled={stateDisabled}
-          onChange={(event) => onChange({ ...value, state: event.target.value, city: '' })}
-        />
-        <Select
-          label="City"
-          options={toOptions(cityAll, facets.cities, city)}
-          value={city}
-          disabled={cityDisabled}
-          onChange={(event) => onChange({ ...value, city: event.target.value })}
+          onChange={(event) => onChange({ ...value, state: event.target.value })}
         />
       </div>
       {failed && (

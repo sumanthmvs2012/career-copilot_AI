@@ -4,7 +4,13 @@ import Button from './Button';
 import { createApplication } from '../services/applicationsService';
 
 // Adds the job to the user's applications as a draft. One click per job; shows "Tracked" afterwards.
-export default function TrackJobButton({ jobId, jobTitle, onTracked }) {
+export default function TrackJobButton({
+  jobId,
+  jobTitle,
+  onTracked,
+  label = 'Track this job',
+  small = false,
+}) {
   const [state, setState] = useState('idle'); // idle | saving | tracked | conflict | error
   const [message, setMessage] = useState('');
 
@@ -37,12 +43,13 @@ export default function TrackJobButton({ jobId, jobTitle, onTracked }) {
       {(state === 'idle' || state === 'saving' || state === 'error') && (
         <Button
           variant="secondary"
+          className={small ? 'btn--sm' : ''}
           loading={state === 'saving'}
           loadingText="Tracking�"
           onClick={track}
           aria-label={`Track this job: ${jobTitle || 'this job'}`}
         >
-          Track this job
+          {label}
         </Button>
       )}
       {state === 'conflict' && <Alert variant="warning">{message}</Alert>}

@@ -63,7 +63,6 @@ const FACETS = {
     { value: 'Canada', count: 10 },
   ],
   states: [{ value: 'CA', count: 50 }],
-  cities: [{ value: 'San Francisco', count: 30 }],
 };
 
 const urlParams = () =>
@@ -116,7 +115,6 @@ describe('JobsPage', () => {
       'Category',
       'Country',
       'State',
-      'City',
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument();
     }
@@ -313,20 +311,19 @@ describe('JobsPage', () => {
   });
 
   describe('category and place filters', () => {
-    it('shows facet options with counts and disables state and city without a country', async () => {
+    it('shows facet options with counts and disables state without a country', async () => {
       renderJobs();
       await screen.findByText('Job 1');
       expect(
         await screen.findByRole('option', { name: 'Software Engineering (120)' }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText('State')).toBeDisabled();
-      expect(screen.getByLabelText('City')).toBeDisabled();
+      expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
       expect(getJobFacets).toHaveBeenCalledWith({
         scope: 'scraped',
         category: '',
         country: '',
         state: '',
-        city: '',
       });
     });
 
@@ -338,14 +335,12 @@ describe('JobsPage', () => {
       await user.selectOptions(screen.getByLabelText('Country'), 'United States');
       await waitFor(() => expect(screen.getByLabelText('State')).toBeEnabled());
       await user.selectOptions(screen.getByLabelText('State'), 'CA');
-      await user.selectOptions(screen.getByLabelText('City'), 'San Francisco');
 
       await waitFor(() =>
         expect(lastCall()).toMatchObject({
           category: 'Design',
           country: 'United States',
           state: 'CA',
-          city: 'San Francisco',
           offset: 0,
         }),
       );
@@ -353,7 +348,6 @@ describe('JobsPage', () => {
         category: 'Design',
         country: 'United States',
         state: 'CA',
-        city: 'San Francisco',
       });
 
       await user.selectOptions(screen.getByLabelText('State'), '');
@@ -371,7 +365,6 @@ describe('JobsPage', () => {
           category: 'Design',
           country: 'Canada',
           state: '',
-          city: '',
         }),
       );
     });
@@ -381,15 +374,13 @@ describe('JobsPage', () => {
         categories: [{ value: 'Design', count: 2 }],
         countries: [{ value: 'Canada', count: 2 }],
         states: [{ value: 'ON', count: 2 }],
-        cities: [{ value: 'Toronto', count: 2 }],
       });
-      renderJobs('/jobs?category=Design&country=Canada&state=ON&city=Toronto&scope=pasted');
+      renderJobs('/jobs?category=Design&country=Canada&state=ON&scope=pasted');
       await screen.findByText('Job 1');
       expect(lastCall()).toMatchObject({
         category: 'Design',
         country: 'Canada',
         state: 'ON',
-        city: 'Toronto',
         scope: 'pasted',
       });
       expect(screen.getByLabelText('Country')).toHaveValue('Canada');
@@ -399,7 +390,6 @@ describe('JobsPage', () => {
         category: 'Design',
         country: 'Canada',
         state: 'ON',
-        city: 'Toronto',
       });
     });
 
@@ -419,7 +409,6 @@ describe('JobsPage', () => {
           category: '',
           country: 'Canada',
           state: '',
-          city: '',
         }),
       );
     });
@@ -429,7 +418,7 @@ describe('JobsPage', () => {
       await screen.findByRole('option', { name: 'Canada (10)' });
       vi.mocked(getJobFacets).mockImplementation(async ({ category }) =>
         category === 'Design'
-          ? { ...FACETS, countries: [{ value: 'Canada', count: 2 }], states: [], cities: [] }
+          ? { ...FACETS, countries: [{ value: 'Canada', count: 2 }], states: [] }
           : FACETS,
       );
       await user.selectOptions(screen.getByLabelText('Category'), 'Design');

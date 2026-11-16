@@ -54,7 +54,6 @@ function readFilters(searchParams) {
     category: (searchParams.get('category') ?? '').trim().slice(0, MAX_TEXT_LENGTH),
     country: (searchParams.get('country') ?? '').trim().slice(0, MAX_TEXT_LENGTH),
     state: (searchParams.get('state') ?? '').trim().slice(0, MAX_TEXT_LENGTH),
-    city: (searchParams.get('city') ?? '').trim().slice(0, MAX_TEXT_LENGTH),
   };
 }
 
@@ -62,8 +61,7 @@ export default function JobsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = readFilters(searchParams);
-  const { q, location, source, remoteType, postedWithin, scope, category, country, state, city } =
-    filters;
+  const { q, location, source, remoteType, postedWithin, scope, category, country, state } = filters;
 
   const [qInput, setQInput] = useState(q);
   const [locationInput, setLocationInput] = useState(location);
@@ -135,7 +133,6 @@ export default function JobsPage() {
       category,
       country,
       state,
-      city,
     })
       .then((rows) => {
         if (id !== requestId.current) return;
@@ -159,7 +156,6 @@ export default function JobsPage() {
     category,
     country,
     state,
-    city,
     reloadCount,
     goToLogin,
   ]);
@@ -181,7 +177,6 @@ export default function JobsPage() {
         category,
         country,
         state,
-        city,
       });
       if (id !== requestId.current) return;
       setJobs((prev) => [...prev, ...rows]);
@@ -200,7 +195,7 @@ export default function JobsPage() {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        for (const key of ['category', 'country', 'state', 'city']) {
+        for (const key of ['category', 'country', 'state']) {
           if (next[key]) params.set(key, next[key]);
           else params.delete(key);
         }
@@ -272,7 +267,7 @@ export default function JobsPage() {
           </div>
           <JobFilters
             scope={scope}
-            value={{ category, country, state, city }}
+            value={{ category, country, state }}
             onChange={updatePlace}
             others={{ q, location, source, remoteType, postedWithin }}
             showClear={false}
@@ -307,10 +302,10 @@ export default function JobsPage() {
             <p role="status" className="muted">
               Showing {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
             </p>
-            <ul className="job-list">
+            <ul className="job-rows">
               {jobs.map((job) => (
                 <li key={job.id}>
-                  <JobDetails job={job} />
+                  <JobDetails job={job} variant="row" />
                 </li>
               ))}
             </ul>

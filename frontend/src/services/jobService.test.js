@@ -146,30 +146,28 @@ describe('jobService', () => {
     expect(fetchMock.mock.calls[1][0]).toMatch(/\/jobs$/);
   });
 
-  it('sends category, country, state and city and omits empty ones', async () => {
+  it('sends category, country and state and omits empty ones', async () => {
     fetchMock.mockImplementation(async () => jsonResponse(200, []));
     await listJobs({
       scope: 'scraped',
       category: ' Data & ML ',
       country: 'United States',
       state: 'CA',
-      city: 'San Francisco',
     });
-    await listJobs({ category: '', country: '  ', state: '', city: '' });
+    await listJobs({ category: '', country: '  ', state: '' });
     const params = new URL(fetchMock.mock.calls[0][0]).searchParams;
     expect(Object.fromEntries(params)).toEqual({
       scope: 'scraped',
       category: 'Data & ML',
       country: 'United States',
       state: 'CA',
-      city: 'San Francisco',
     });
     expect(fetchMock.mock.calls[0][0]).toContain('category=Data+%26+ML');
     expect(fetchMock.mock.calls[1][0]).toMatch(/\/jobs$/);
   });
 
   it('GETs /jobs/facets with scope scraped by default and sends every active filter', async () => {
-    const facets = { categories: [], countries: [], states: [], cities: [] };
+    const facets = { categories: [], countries: [], states: [] };
     fetchMock.mockImplementation(async () => jsonResponse(200, facets));
     await expect(getJobFacets()).resolves.toEqual(facets);
     await getJobFacets({ scope: 'pasted', country: ' Canada ', state: '' });
@@ -183,7 +181,6 @@ describe('jobService', () => {
       postedWithin: 7,
       country: 'United States',
       state: 'CA',
-      city: 'San Francisco',
     });
 
     expect(fetchMock.mock.calls[0][0]).toMatch(/\/jobs\/facets\?scope=scraped$/);
@@ -200,7 +197,6 @@ describe('jobService', () => {
       postedWithin: '7',
       country: 'United States',
       state: 'CA',
-      city: 'San Francisco',
     });
   });
 
@@ -350,7 +346,7 @@ describe('mockJobs', () => {
     expect(jobs.some((j) => j.locations.length === 0 && /remote/i.test(j.location))).toBe(true);
   });
 
-  it('filters by category, country, state and city (all on the same location)', async () => {
+  it('filters by category, country and state (both on the same location)', async () => {
     const byCategory = await settle(mockListJobs({ scope: 'scraped', category: 'design' }));
     expect(byCategory.length).toBeGreaterThan(0);
     expect(byCategory.every((j) => j.category === 'Design')).toBe(true);
@@ -359,12 +355,14 @@ describe('mockJobs', () => {
     expect(byCountry.length).toBeGreaterThan(0);
     expect(byCountry.every((j) => j.locations.some((l) => l.country === 'Canada'))).toBe(true);
 
-    const byCity = await settle(
-      mockListJobs({ scope: 'scraped', country: 'United States', state: 'NY', city: 'New York' }),
+    const byState = await settle(
+      mockListJobs({ scope: 'scraped', country: 'United States', state: 'NY' }),
     );
-    expect(byCity.length).toBeGreaterThan(0);
+    expect(byState.length).toBeGreaterThan(0);
     expect(
-      byCity.every((j) => j.locations.some((l) => l.state === 'NY' && l.city === 'New York')),
+      byState.every((j) =>
+        j.locations.some((l) => l.country === 'United States' && l.state === 'NY'),
+      ),
     ).toBe(true);
 
     expect(
@@ -372,7 +370,7 @@ describe('mockJobs', () => {
     ).toEqual([]);
   });
 
-  it('builds facets with counts, most common first, and cascades states and cities', async () => {
+  it('builds facets with counts, most common first, and cascades states', async () => {
     const all = await settle(mockListJobs({ scope: 'scraped' }));
     const facets = await settle(mockJobFacets({ scope: 'scraped' }));
     const total = facets.categories.reduce((sum, c) => sum + c.count, 0);
@@ -388,18 +386,10 @@ describe('mockJobs', () => {
     const stateNames = usFacets.states.map((s) => s.value);
     expect(stateNames).toEqual(expect.arrayContaining(['CA', 'NY']));
     expect(stateNames).not.toContain('ON');
-    expect(usFacets.cities.map((c) => c.value)).toContain('Seattle');
-
-    const nyFacets = await settle(
-      mockJobFacets({ scope: 'scraped', country: 'United States', state: 'NY' }),
-    );
-    expect(nyFacets.cities.map((c) => c.value)).toEqual(['New York']);
+    expect(usFacets.cities).toBeUndefined();
 
     const ukFacets = await settle(mockJobFacets({ scope: 'scraped', country: 'United Kingdom' }));
     expect(ukFacets.states).toEqual([]);
-    expect(ukFacets.cities.map((c) => c.value)).toEqual(
-      expect.arrayContaining(['London', 'Manchester']),
-    );
   });
 
   it('cross-filters the mock facets: each list ignores only its own dimension', async () => {
@@ -413,11 +403,10 @@ describe('mockJobs', () => {
 
     const canada = await settle(mockJobFacets({ scope: 'scraped', country: 'Canada' }));
     expect(canada.states.map((s) => s.value)).toEqual(['ON']);
-    expect(canada.cities.map((c) => c.value)).toEqual(['Toronto']);
     expect(canada.countries.length).toBe(all.countries.length);
 
     const none = await settle(mockJobFacets({ scope: 'scraped', q: 'no-such-title' }));
-    expect(none).toEqual({ categories: [], countries: [], states: [], cities: [] });
+    expect(none).toEqual({ categories: [], countries: [], states: [] });
   });
 
   it('has no facets for an empty pasted scope and requires a token', async () => {
@@ -425,7 +414,6 @@ describe('mockJobs', () => {
       categories: [],
       countries: [],
       states: [],
-      cities: [],
     });
     clearToken();
     expect((await settle(mockJobFacets())).status).toBe(401);

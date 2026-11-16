@@ -102,7 +102,7 @@ Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails wit
 - Note: someone edited AGENTS.md Part two (now says "read the files in the docs folder"); the root docs live at the repo root, so this wording may need fixing.
 
 ## Session 3 addendum 2 (2026-11-15): filters, locations, categories
-- `/jobs` page with filters (search, source, remote type, location text, posted within, scope) and dashboard Latest-jobs card with compact Category/Country/State/City filters (shared `JobFilters`, options from `GET /jobs/facets`).
+- `/jobs` page with filters (search, source, remote type, location text, posted within, scope) and dashboard Latest-jobs card with compact Category/Country/State filters (shared `JobFilters`, options from `GET /jobs/facets`).
 - V5 applied on real Postgres: `jobs.category` + `job_locations`. Scraper fills both on every run (verified live: second run created 0, updated 200 per board). `LocationParser` and `CategoryClassifier` in `jobs/scraper/` are best effort.
 - Known parser limits: "City, X, Country" reads X as a state (e.g. Atlanta shows up as a US state); regions outside US/CA need a following country; "Bay Area" becomes city "Bay"; rows with no parsable location only match the free-text location filter. Category from department first (Greenhouse departments, Lever team), then title.
 - Dashboard: removed the small pasted-jobs card (Latest jobs links to /jobs and /match); Applications table shows 10 dummy rows when `VITE_USE_MOCK_APPLICATIONS=true` (frontend/.env, dev only, "Demo data" badge).
@@ -144,3 +144,16 @@ Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails wit
 - Security: the callback path `GET /mail-connections/callback` is the only new permitAll route. Tokens, snippets, senders and bodies are never stored or logged; exceptions from the provider carry fixed messages.
 - Known gaps: two simultaneous first GETs of interview questions for one job could store the list twice (no unique constraint); mail matching is by company name or website domain only, so jobs without a company are never matched; one scan reads at most the 100 newest messages.
 - Tests: 669 backend tests pass (`mvn -q test`), `mvn package` passes.
+
+
+## Session 8 UI refresh (2026-11-16)
+- Frontend only, no API or data changes. Dashboard has a gradient hero (greeting, Applications / Replies / Latest jobs / Resumes tiles), gradient-barred cards with icons, a teal Mailbox card, nicer empty states and a polished Applications table. 3 columns from 1024px; mailbox moved above Latest jobs.
+- Latest jobs and `/jobs` are list rows: `JobDetails variant="row"` (title h3 + category pill, details, actions on the right, one panel under the row for match, suggestions, tailor errors and description). Default card variant is unchanged (used by `/match`). New: `Icon`, `EmptyState`, `utils/clipboard.js`, `styles/refresh.css`; `TrackJobButton` takes `label` and `small`.
+- `ResumeSuggestions` is grouped cards (Add a skill, Close match, Keywords to include, Headline, Location, Tips) with priority words and per-item Copy; `MatchResult` uses a circular gauge. DESIGN_SYSTEM.md Part five documents it.
+- Tests: 407 frontend tests (34 files) pass; lint and build pass. Not yet browser-checked. Nothing committed.
+
+## Session 8 fixes (2026-11-16)
+- Frontend only. Resume count (dashboard "N of 2" and the Resumes tile) counts uploads only, not tailored copies; long file names truncate with a title tooltip.
+- Latest jobs rows: actions sit under the row text (one or two compact lines, icon + short label for Suggestions, Interview, Track, View details); location shows the first 2 places without the country plus "+N more" (full list in the title attribute).
+- City filter removed from the UI (`JobFilters`, `/jobs` URL params, `listJobs`/`getJobFacets` no longer send `city`). Exactly Category, Country, State. State is enabled as soon as a country is chosen ("Loading states..." while facets load). The backend still accepts `city` and returns `cities`; the frontend ignores them.
+- Checked against the real backend: `GET /jobs/facets?scope=scraped&country=United States` returns states (New York 78, District of Columbia 44, California 31, Washington 15, ...). Tests: 410 frontend tests pass; lint and build pass.
