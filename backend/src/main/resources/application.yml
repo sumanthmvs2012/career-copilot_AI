@@ -51,6 +51,11 @@ app:
     cron: ${SCRAPER_CRON:0 0 * * * *}
     # Comma separated source:token pairs, for example greenhouse:stripe,lever:palantir
     boards: ${SCRAPER_BOARDS:}
+  agent:
+    # Hourly draft agent: writes application drafts (never submits) for new postings scoring at least min-score.
+    enabled: ${AGENT_ENABLED:false}
+    min-score: ${AGENT_MIN_SCORE:70}
+    cron: ${AGENT_CRON:0 15 * * * *}
   locations:
     # Re-derives job_locations from each stored free-text location at startup (idempotent, deletes no jobs).
     reparse-on-startup: ${LOCATIONS_REPARSE_ON_STARTUP:true}

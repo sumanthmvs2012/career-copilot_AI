@@ -118,6 +118,11 @@
   background: var(--color-success-bg);
 }
 
+.alert--info {
+  color: var(--status-info);
+  background: var(--status-info-bg);
+}
+
 .alert--warning {
   color: var(--color-warning);
   background: var(--color-warning-bg);

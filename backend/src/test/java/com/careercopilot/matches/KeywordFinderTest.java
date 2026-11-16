@@ -46,4 +46,22 @@ class KeywordFinderTest {
         assertThat(KeywordFinder.missing("alpha alpha beta beta gamma gamma", "", w -> false, 2))
                 .containsExactly("alpha", "beta");
     }
+
+    @Test
+    void wordsFromTheJobTitleAndCompanyNameAreNeverKeywords() {
+        String job = "Head of Enterprise, West. "
+                + "enterprise sales west coast enterprise west billing billing";
+
+        assertThat(KeywordFinder.missing(job, "", w -> false, 10, "Head of Enterprise, West Acme"))
+                .containsExactly("billing");
+    }
+
+    @Test
+    void genericBusinessWordsAreNotKeywords() {
+        String job = "senior developer solutions targets customers scaling operating growth management revenue "
+                + "senior developer solutions targets customers scaling operating growth management revenue "
+                + "ledger ledger";
+
+        assertThat(find(job, "")).containsExactly("ledger");
+    }
 }

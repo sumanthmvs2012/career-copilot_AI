@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '../components/Alert';
 import Avatar from '../components/Avatar';
 import Button from '../components/Button';
+import DraftAgentPanel from '../components/DraftAgentPanel';
 import EmptyState from '../components/EmptyState';
 import Icon from '../components/Icon';
 import JobDetails from '../components/JobDetails';
@@ -291,7 +292,7 @@ function ApplicationRow({ app, onUnauthorized }) {
   );
 }
 
-function ApplicationsSection({ state, applications, onRetry, onUnauthorized }) {
+function ApplicationsSection({ state, applications, onRetry, onUnauthorized, onAgentDone }) {
   return (
     <section className="card" aria-labelledby="applications-heading">
       <div className="card__head">
@@ -304,6 +305,7 @@ function ApplicationsSection({ state, applications, onRetry, onUnauthorized }) {
           </span>
         )}
       </div>
+      <DraftAgentPanel onDone={onAgentDone} onUnauthorized={onUnauthorized} />
       {state === 'loading' && <p role="status">Loading applications…</p>}
       {state === 'error' && (
         <>
@@ -518,6 +520,7 @@ export default function DashboardPage() {
           applications={applications}
           onRetry={loadApplications}
           onUnauthorized={goToLogin}
+          onAgentDone={loadApplications}
         />
       </div>
     </main>

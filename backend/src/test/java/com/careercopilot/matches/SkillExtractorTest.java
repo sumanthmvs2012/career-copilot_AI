@@ -112,4 +112,12 @@ class SkillExtractorTest {
         assertThat(small.extract("we like foo")).containsExactly("Foo");
         assertThat(small.relatedTo("Foo")).isEmpty();
     }
+
+    @Test
+    void companySkillsDropsASkillNamedLikeTheCompany() {
+        assertThat(CompanySkills.exclude(List.of("Stripe", "Java"), "stripe")).containsExactly("Java");
+        assertThat(CompanySkills.exclude(List.of("Stripe", "Java"), "Stripe, Inc")).containsExactly("Stripe", "Java");
+        assertThat(CompanySkills.exclude(List.of("Java"), null)).containsExactly("Java");
+        assertThat(CompanySkills.exclude(List.of("Java"), " ")).containsExactly("Java");
+    }
 }

@@ -310,6 +310,21 @@ describe('JobDetails tailoring', () => {
     expect(await screen.findByText(/upload a resume first to tailor it/i)).toBeInTheDocument();
   });
 
+  it('shows the server message on a 404 when present', async () => {
+    vi.mocked(tailorResume).mockRejectedValue(apiError(404, { message: 'Job not found.' }));
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText(/Job not found\./)).toBeInTheDocument();
+    expect(screen.queryByText(/upload a resume first to tailor it/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the default text on a 404 without a message', async () => {
+    vi.mocked(tailorResume).mockRejectedValue(apiError(404));
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Tailor my resume for this job' }));
+    expect(await screen.findByText(/upload a resume first to tailor it/i)).toBeInTheDocument();
+  });
+
   it('shows an error and retries', async () => {
     vi.mocked(tailorResume).mockRejectedValueOnce(apiError(500)).mockResolvedValueOnce({ id: 13 });
     const user = renderWithRoutes();
@@ -335,6 +350,13 @@ describe('JobDetails tailoring', () => {
     expect(tailorResume).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Hide suggestions' }));
     expect(screen.queryByText(/add kafka/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the server message when suggestions answer 404', async () => {
+    vi.mocked(getSuggestions).mockRejectedValue(apiError(404, { message: 'Resume not found.' }));
+    const user = renderWithRoutes();
+    await user.click(screen.getByRole('button', { name: 'Get suggestions' }));
+    expect(await screen.findByText(/Resume not found\./)).toBeInTheDocument();
   });
 
   it('shows an error with retry when suggestions fail', async () => {

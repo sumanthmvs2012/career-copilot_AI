@@ -5,6 +5,7 @@ import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
 import com.careercopilot.jobs.JobRepository;
+import com.careercopilot.matches.CompanySkills;
 import com.careercopilot.matches.MatchService;
 import com.careercopilot.matches.SkillExtractor;
 import com.careercopilot.matches.SkillJson;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,10 +36,12 @@ public class InterviewQuestionService {
     private final InterviewQuestionGenerator generator;
     private final MatchService matchService;
     private final SkillExtractor extractor;
+    private final InterviewQuestionWriter writer;
 
     public InterviewQuestionService(ProfileRepository profiles, JobRepository jobs, CompanyRepository companies,
             ResumeRepository resumes, InterviewQuestionRepository questions, InterviewQuestionGenerator generator,
-            MatchService matchService, SkillExtractor extractor) {
+            MatchService matchService, SkillExtractor extractor,
+            InterviewQuestionWriter writer) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.companies = companies;
@@ -46,9 +50,10 @@ public class InterviewQuestionService {
         this.generator = generator;
         this.matchService = matchService;
         this.extractor = extractor;
+        this.writer = writer;
     }
 
-    @Transactional
+    /** Not one big transaction: the list is written by InterviewQuestionWriter so a lost race can be handled. */
     public InterviewQuestionsResponse get(Long userId, Long jobId) {
         Profile profile = profiles.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
         Job job = matchService.visibleJob(profile, jobId);
@@ -71,7 +76,7 @@ public class InterviewQuestionService {
     }
 
     private List<InterviewQuestion> generateAndStore(Profile profile, Job job) {
-        List<String> jobSkills = jobSkills(job);
+        List<String> jobSkills = CompanySkills.exclude(jobSkills(job), companyName(job));
         // Only the base resume's skills are read; its text is never touched here.
         List<String> resumeSkills = resumes.findByProfileIdAndIsBaseTrue(profile.getId())
                 .map(this::resumeSkills).orElse(null);
@@ -83,7 +88,18 @@ public class InterviewQuestionService {
             rows.add(new InterviewQuestion(profile.getId(), job.getId(), generated.get(i).question(),
                     generated.get(i).category(), i));
         }
-        List<InterviewQuestion> saved = questions.saveAll(rows);
+        List<InterviewQuestion> saved;
+        try {
+            saved = writer.saveAll(rows);
+        } catch (DataIntegrityViolationException e) {
+            // A simultaneous first request stored the list already: return that one.
+            List<InterviewQuestion> existing = questions.findByProfileIdAndJobIdOrderByPositionAscIdAsc(
+                    profile.getId(), job.getId());
+            if (existing.isEmpty()) {
+                throw e;
+            }
+            return existing;
+        }
         log.info("Interview questions generated for profile {} and job {}: {} questions", profile.getId(),
                 job.getId(), saved.size());
         return saved;

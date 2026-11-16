@@ -36,6 +36,9 @@ public class Profile {
     @Column(name = "auto_submit_enabled", nullable = false)
     private boolean autoSubmitEnabled;
 
+    @Column(name = "last_agent_run_at")
+    private Instant lastAgentRunAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -108,6 +111,10 @@ public class Profile {
 
     public void setAutoSubmitEnabled(boolean autoSubmitEnabled) {
         this.autoSubmitEnabled = autoSubmitEnabled;
+    }
+
+    public Instant getLastAgentRunAt() {
+        return lastAgentRunAt;
     }
 
     public Instant getCreatedAt() {

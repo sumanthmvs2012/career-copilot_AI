@@ -158,3 +158,24 @@ Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails wit
 - City filter removed from the UI (`JobFilters`, `/jobs` URL params, `listJobs`/`getJobFacets` no longer send `city`). Exactly Category, Country, State. State is enabled as soon as a country is chosen ("Loading states..." while facets load). The backend still accepts `city` and returns `cities`; the frontend ignores them.
 - Checked against the real backend: `GET /jobs/facets?scope=scraped&country=United States` returns states (New York 78, District of Columbia 44, California 31, Washington 15, ...). Tests: 410 frontend tests pass; lint and build pass.
 - Applications table: the status badge and visible "Change status for ..." label are gone. `StatusSelect` is the status display: a pill-shaped select coloured by the current status (same --status-* pairs as `StatusBadge`), a leading dot, coloured options, a screen-reader-only label, and an immediate colour change on pick (reverts if the save fails).
+
+## Session 9 agent (2026-11-16): hourly draft agent (backend)
+- Built `agent/` module: `DraftAgentService` (`run()` for all profiles with a base resume, `runForUser(userId)` for one), `CoverLetterTemplate` (rule-based, no invented claims), `DraftAgentScheduler` (only when `AGENT_ENABLED=true`, cron `AGENT_CRON`, default hourly at :15), `AgentController` `POST /agent/run` -> `{considered, draftsCreated}` (404 no profile, 409 "Upload a resume first." no base resume). Score threshold `AGENT_MIN_SCORE` (default 70). Contract is in ARCHITECTURE.md "Draft agent".
+- Drafts are `applications` rows with status "draft" and `resume_id` = base resume. The agent never submits and never calls `submitAuto`, even with auto-submit on (no job-board integration yet; TODO in `DraftAgentService`).
+- Schema: `V10__add_profiles_last_agent_run_at.sql` (`profiles.last_agent_run_at`, nullable); DATABASE.md updated. `.env.example` lists `AGENT_ENABLED`, `AGENT_MIN_SCORE`, `AGENT_CRON` (commented).
+- Tests: 692 backend tests pass (23 new: `DraftAgentServiceTest`, `CoverLetterTemplateTest`, `AgentControllerIntegrationTest`).
+- Known gaps: no frontend for the agent yet (no "Run now" button or draft badge); a re-scraped job is never re-considered (window uses `jobs.created_at`); jobs with no recognised skills score 0 and never get a draft.
+
+## Session 9 frontend (2026-11-16)
+- Dashboard: `DraftAgentPanel` in the Applications card ("Find new matches", one-line explanation, aria-live result "Checked N new jobs, created M drafts", 409 -> link to /resume, 404 -> link to /profile, other errors generic, status-only console log; refreshes the applications list). `services/agentService.js` (`runAgent`, POST /agent/run) + `mockAgent.js` (flag `VITE_USE_MOCK_AGENT`, dev only, listed in `.env.example`). Agent drafts are ordinary draft rows, so Edit & submit works unchanged; no "made by agent" marker (the API has no flag).
+- `MatchResult` shows an optional `match.note` in an info Alert (new `.alert--info` style).
+- Tailor and suggestions 404/409 on job rows now show the server's `message` when present, else the old "Upload a resume first to tailor it." text.
+- Tests: 427 frontend tests (38 files) pass; lint and build pass. Not run against the real backend yet.
+
+## Session 9 match quality (2026-11-16)
+- missingKeywords: words from the job title and company name are excluded and the stopword list has many generic job/business words; still 2+ occurrences. A skill equal to the company name is dropped (`matches/CompanySkills`, used by match, suggestions via the analysis, and interview questions).
+- Match response gains `note` (null, or "No known skills were found in this job description, so the score cannot be calculated." when no skills; score 0). Derived from the stored lists, no schema change. Frontend can show it.
+- Races: `MatchWriter` stores the match in its own transaction; a DataIntegrityViolation on a simultaneous POST becomes an update of the other row (`matchJob` is no longer one big transaction). `InterviewQuestionWriter` + `V11__interview_questions_unique_position.sql` (unique profile, job, position): the losing first GET returns the stored list.
+- 404s: tailor/suggestions already returned "Resume not found." vs "Job not found."; documented in ARCHITECTURE.md so the frontend can branch on the message.
+- Constructor changes: `MatchService` (+CompanyRepository, MatchWriter), `InterviewQuestionService` (+InterviewQuestionWriter), `MatchResponse` (+note). Tests: 703 backend tests pass.
+

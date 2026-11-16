@@ -1,5 +1,6 @@
 package com.careercopilot.common.web;
 
+import com.careercopilot.agent.AgentNoResumeException;
 import com.careercopilot.applications.ApplicationAlreadyExistsException;
 import com.careercopilot.applications.ApplicationNotDraftException;
 import com.careercopilot.applications.ApplicationNotFoundException;
@@ -177,6 +178,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoBaseResumeException.class)
     ResponseEntity<ErrorResponse> handleNoBaseResume(NoBaseResumeException ex) {
         return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Upload a resume first to see your match."));
+    }
+
+    @ExceptionHandler(AgentNoResumeException.class)
+    ResponseEntity<ErrorResponse> handleAgentNoResume(AgentNoResumeException ex) {
+        return respond(HttpStatus.CONFLICT, new ErrorResponse(409, "Upload a resume first."));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

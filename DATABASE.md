@@ -5,7 +5,7 @@ Part one: the tables. Users hold the login details. Profiles link to users and h
           email logs and mail connections each have their own table. Application drafts made by the agent are rows in applications with status "draft".
 
 Part two: the columns => Users: id, email, password hash, created at, updated at.
-                         Profiles: id, user id, full name, headline, location, remote ok, auto submit enabled (default false), created at, updated at.
+                         Profiles: id, user id, full name, headline, location, remote ok, auto submit enabled (default false), last agent run at (nullable; when the draft agent last ran for this profile; V10), created at, updated at.
                          Resumes: id, profile id, file path (storage key, never a URL), file name, content type, parsed text, is base, base resume id (nullable),
                                   created at, job id (nullable, set on tailored copies), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7).
                                   The skills column may become jsonb, and embedding (vector 1024) is added, by the Phase 5 AI migration.
@@ -25,7 +25,7 @@ Part three: the columns => Job matches (V7): id, profile id (foreign key, delete
                                          except near matched skills, an array of {jobSkill, resumeSkill}), suggested headline (VARCHAR 200, nullable),
                                          location fit status (VARCHAR 20, CHECK match, partial, mismatch, unknown; default unknown),
                                          location fit note (VARCHAR 300, nullable), created at, updated at.
-                                         Unique on (profile id, job id); indexed by profile id and job id. These JSON text columns (and the skills
+                                         Unique on (profile id, job id); indexed by profile id and job id. V11 adds a unique index on (profile id, job id, position), so a list is never stored twice by simultaneous first requests. These JSON text columns (and the skills
                                          columns above) are TEXT so H2 and PostgreSQL both work; they may become jsonb with the Phase 5 migration.
                            Applications: id, profile id, job id, resume id, status (draft, applied, interviewing, offer, rejected, withdrawn), cover letter,
                                          submitted at, submitted by (user, auto), created at, updated at.

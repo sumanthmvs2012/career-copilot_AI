@@ -293,4 +293,31 @@ class MatchControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(PASTE))
                 .andExpect(status().isCreated());
     }
+
+    @Test
+    void aJobWithNoRecognisedSkillsReturnsScoreZeroAndANote() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        baseResume("jane@example.com", "Java developer.", "[\"Java\"]");
+        long jobId = scrapedJob("Head Chef", "Cook meals for guests every evening.");
+        String note = "No known skills were found in this job description, so the score cannot be calculated.";
+
+        mvc.perform(post("/jobs/" + jobId + "/match").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.score").value(0))
+                .andExpect(jsonPath("$.note").value(note));
+        mvc.perform(get("/jobs/" + jobId + "/match").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.note").value(note));
+    }
+
+    @Test
+    void aJobWithSkillsHasANullNote() throws Exception {
+        String token = tokenWithProfile("jane@example.com");
+        baseResume("jane@example.com", "Java developer.", "[\"Java\"]");
+        long jobId = scrapedJob("Engineer", "We use Java.");
+
+        mvc.perform(post("/jobs/" + jobId + "/match").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.note").value(org.hamcrest.Matchers.nullValue()));
+    }
 }

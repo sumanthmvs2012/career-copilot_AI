@@ -38,6 +38,9 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
   const [suggestions, setSuggestions] = useState(null);
   const [suggestionsState, setSuggestionsState] = useState('idle'); // idle | loading | no-resume | error
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // The server's own words for a 404/409 (e.g. "Job not found."); empty means use the default text.
+  const [tailorMessage, setTailorMessage] = useState('');
+  const [suggestionsMessage, setSuggestionsMessage] = useState('');
   const details = [job.companyName, formatLocations(job), REMOTE_LABELS[job.remoteType]]
     .filter(Boolean)
     .join(' · ');
@@ -80,22 +83,28 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
     return findBaseResume(await listResumes());
   }
 
-  function handleTailorError(error, setState) {
+  function handleTailorError(error, setState, setMessage) {
     console.error('Tailoring step failed', { status: error?.status ?? 'unknown' });
-    setState(error?.status === 404 || error?.status === 409 ? 'no-resume' : 'error');
+    const missing = error?.status === 404 || error?.status === 409;
+    const text = error?.data?.message;
+    setMessage(missing && typeof text === 'string' ? text : '');
+    setState(missing ? 'no-resume' : 'error');
   }
 
   async function runTailor() {
     setTailorState('loading');
     try {
       const base = await findBase();
-      if (!base) return setTailorState('no-resume');
+      if (!base) {
+        setTailorMessage('');
+        return setTailorState('no-resume');
+      }
       const copy = await tailorResume(base.id, job.id);
       setTailorState('idle');
       navigate(`/resume/${copy.id}`);
     } catch (error) {
       if (error?.status === 401) return navigate('/login', { replace: true });
-      handleTailorError(error, setTailorState);
+      handleTailorError(error, setTailorState, setTailorMessage);
     }
   }
 
@@ -103,13 +112,16 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
     setSuggestionsState('loading');
     try {
       const base = await findBase();
-      if (!base) return setSuggestionsState('no-resume');
+      if (!base) {
+        setSuggestionsMessage('');
+        return setSuggestionsState('no-resume');
+      }
       const result = await getSuggestions(base.id, job.id);
       setSuggestions(result?.suggestions ?? []);
       setSuggestionsState('idle');
     } catch (error) {
       if (error?.status === 401) return navigate('/login', { replace: true });
-      handleTailorError(error, setSuggestionsState);
+      handleTailorError(error, setSuggestionsState, setSuggestionsMessage);
     }
   }
 
@@ -119,9 +131,9 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
     if (next && suggestions === null && suggestionsState !== 'loading') loadSuggestions();
   }
 
-  const noResumeNote = (
+  const noResumeNote = (message) => (
     <Alert variant="warning">
-      Upload a resume first to tailor it. <Link to="/resume">Go to your resumes</Link>
+      {message || 'Upload a resume first to tailor it.'} <Link to="/resume">Go to your resumes</Link>
     </Alert>
   );
 
@@ -257,7 +269,7 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
               <Alert variant="error">We could not match this job. Please try again.</Alert>
             )}
             {match && <MatchResult match={match} />}
-            {tailorState === 'no-resume' && noResumeNote}
+            {tailorState === 'no-resume' && noResumeNote(tailorMessage)}
             {tailorState === 'error' && (
               <>
                 <Alert variant="error">We could not tailor your resume. Please try again.</Alert>
@@ -269,7 +281,7 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
             {showSuggestions && (
               <div id={suggestionsId} className="suggestions-region">
                 {suggestionsState === 'loading' && <p role="status">Loading suggestions…</p>}
-                {suggestionsState === 'no-resume' && noResumeNote}
+                {suggestionsState === 'no-resume' && noResumeNote(suggestionsMessage)}
                 {suggestionsState === 'error' && (
                   <>
                     <Alert variant="error">We could not load suggestions. Please try again.</Alert>
@@ -353,7 +365,7 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
           >
             Tailor my resume for this job
           </Button>
-          {tailorState === 'no-resume' && noResumeNote}
+          {tailorState === 'no-resume' && noResumeNote(tailorMessage)}
           {tailorState === 'error' && (
             <>
               <Alert variant="error">We could not tailor your resume. Please try again.</Alert>
@@ -375,7 +387,7 @@ export default function JobDetails({ job, compact = false, variant = 'card', onT
             {showSuggestions && suggestionsState === 'loading' && (
               <p role="status">Loading suggestions…</p>
             )}
-            {showSuggestions && suggestionsState === 'no-resume' && noResumeNote}
+            {showSuggestions && suggestionsState === 'no-resume' && noResumeNote(suggestionsMessage)}
             {showSuggestions && suggestionsState === 'error' && (
               <>
                 <Alert variant="error">We could not load suggestions. Please try again.</Alert>

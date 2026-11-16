@@ -59,6 +59,9 @@ export default function MatchResult({ match, loading = false, error = '' }) {
 
   return (
     <div className="match-result">
+      {typeof match.note === 'string' && match.note.trim() && (
+        <Alert variant="info">{match.note}</Alert>
+      )}
       <div className="match-result__score">
         <div
           className={`match-gauge match-gauge--${band.variant}`}

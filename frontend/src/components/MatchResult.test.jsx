@@ -102,4 +102,13 @@ describe('MatchResult', () => {
       '25 out of 100, Weak match',
     );
   });
+
+  it('shows the optional note in an info alert, and nothing when absent', () => {
+    const note = 'No known skills were found in this job description, so the score cannot be calculated.';
+    const { rerender } = render(<MatchResult match={{ ...MATCH, note }} />);
+    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(screen.getByText(note)).toHaveClass('alert--info');
+    rerender(<MatchResult match={MATCH} />);
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+  });
 });

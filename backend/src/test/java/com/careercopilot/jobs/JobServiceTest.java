@@ -96,7 +96,7 @@ class JobServiceTest {
         when(profiles.findByUserId(1L)).thenReturn(Optional.of(owner));
         stubSave();
         MatchResponse computed = new MatchResponse(9L, 3L, 80, List.of("Java"), List.of(), List.of(), List.of(),
-                "Engineer", null, null);
+                "Engineer", null, null, null);
         when(matchService.matchIfResume(eq(owner), any(Job.class))).thenReturn(computed);
 
         JobMatchResponse response = service.matchPasted(1L,

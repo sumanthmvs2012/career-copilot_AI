@@ -22,6 +22,7 @@ import {
   startMailConnection,
   syncMail,
 } from '../services/mailService';
+import { runAgent } from '../services/agentService';
 import { clearToken, getToken, setToken } from '../utils/authToken';
 
 vi.mock('../services/profileService', () => ({ getProfile: vi.fn() }));
@@ -34,6 +35,7 @@ vi.mock('../services/mailService', () => ({
   getReminders: vi.fn(),
   dismissReminder: vi.fn(),
 }));
+vi.mock('../services/agentService', () => ({ runAgent: vi.fn() }));
 vi.mock('../services/resumeService', () => ({ listResumes: vi.fn() }));
 vi.mock('../services/applicationsService', () => ({
   APPLICATION_STATUSES: ['draft', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn'],
@@ -311,6 +313,16 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Yes')).toBeInTheDocument();
     expect(screen.getByText('No')).toBeInTheDocument();
     expect(screen.getByText('5 days ago')).toBeInTheDocument();
+  });
+
+  it('runs the draft agent and refreshes the applications list', async () => {
+    vi.mocked(getProfile).mockResolvedValue(PROFILE);
+    vi.mocked(runAgent).mockResolvedValue({ considered: 4, draftsCreated: 1 });
+    const user = renderDashboard();
+    await screen.findByText('No applications yet');
+    await user.click(screen.getByRole('button', { name: 'Find new matches' }));
+    expect(await screen.findByText('Checked 4 new jobs, created 1 draft')).toBeInTheDocument();
+    await waitFor(() => expect(listApplications).toHaveBeenCalledTimes(2));
   });
 
   it('prompts to create a profile on 404', async () => {

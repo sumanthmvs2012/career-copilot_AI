@@ -1,5 +1,7 @@
 package com.careercopilot.matches;
 
+import com.careercopilot.jobs.Company;
+import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
 import com.careercopilot.jobs.JobLocation;
 import com.careercopilot.jobs.JobLocationRepository;
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,18 +37,23 @@ public class MatchService {
     private final JobMatchRepository matches;
     private final JobLocationRepository locations;
     private final SkillExtractor extractor;
+    private final CompanyRepository companies;
+    private final MatchWriter writer;
 
     public MatchService(ProfileRepository profiles, JobRepository jobs, ResumeRepository resumes,
-            JobMatchRepository matches, JobLocationRepository locations, SkillExtractor extractor) {
+            JobMatchRepository matches, JobLocationRepository locations, SkillExtractor extractor,
+            CompanyRepository companies, MatchWriter writer) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.resumes = resumes;
         this.matches = matches;
         this.locations = locations;
         this.extractor = extractor;
+        this.companies = companies;
+        this.writer = writer;
     }
 
-    @Transactional
+    /** Not one big transaction: the row is written by MatchWriter so a lost race can be retried as an update. */
     public MatchResponse matchJob(Long userId, Long jobId) {
         Profile profile = profiles.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
         Job job = visibleJob(profile, jobId);
@@ -85,7 +93,8 @@ public class MatchService {
     @Transactional
     public MatchAnalysis analyze(Profile profile, Job job, Resume resume) {
         List<String> resumeSkills = resumeSkills(resume);
-        List<String> jobSkills = jobSkills(job);
+        String company = companyName(job);
+        List<String> jobSkills = CompanySkills.exclude(jobSkills(job), company);
         Set<String> have = new HashSet<>(resumeSkills);
 
         List<String> matched = new ArrayList<>();
@@ -104,7 +113,7 @@ public class MatchService {
         int score = jobSkills.isEmpty() ? 0 : (int) Math.round(100.0 * matched.size() / jobSkills.size());
 
         List<String> keywords = KeywordFinder.missing(job.getTitle() + "\n" + job.getDescription(),
-                resume.getParsedText(), extractor::isSkillWord, MAX_KEYWORDS);
+                resume.getParsedText(), extractor::isSkillWord, MAX_KEYWORDS, job.getTitle() + " " + company);
         List<JobLocation> places = locations.findByJobIdIn(List.of(job.getId()));
         LocationFit fit = LocationFitCalculator.evaluate(profile.isRemoteOk(), profile.getLocation(),
                 job.getRemoteType(), job.getLocation(), places);
@@ -120,11 +129,6 @@ public class MatchService {
         List<NearMatch> near = analysis.nearMatchedSkills();
         List<String> keywords = analysis.missingKeywords();
 
-        // One row per profile and job: the old row goes first so the new result carries a fresh timestamp.
-        matches.findByProfileIdAndJobId(profile.getId(), job.getId()).ifPresent(old -> {
-            matches.delete(old);
-            matches.flush();
-        });
         JobMatch row = new JobMatch(profile.getId(), job.getId());
         row.setResumeId(resume.getId());
         row.setScore(score);
@@ -135,7 +139,13 @@ public class MatchService {
         row.setSuggestedHeadline(analysis.suggestedHeadline());
         row.setLocationFitStatus(fit.status());
         row.setLocationFitNote(fit.note());
-        JobMatch saved = matches.save(row);
+        JobMatch saved;
+        try {
+            saved = writer.replace(row);
+        } catch (DataIntegrityViolationException e) {
+            // A simultaneous request stored this profile and job first: update its row with this result.
+            saved = writer.overwrite(row);
+        }
 
         log.info("Match computed for profile {} and job {}: score {}, {} job skills", profile.getId(), job.getId(),
                 score, analysis.jobSkills().size());
@@ -157,6 +167,11 @@ public class MatchService {
             jobs.save(job);
         }
         return SkillJson.readStrings(job.getSkills());
+    }
+
+    private String companyName(Job job) {
+        return job.getCompanyId() == null ? null
+                : companies.findById(job.getCompanyId()).map(Company::getName).orElse(null);
     }
 
     private static String headline(Job job, Profile profile) {

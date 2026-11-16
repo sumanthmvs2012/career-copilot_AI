@@ -36,13 +36,36 @@ final class KeywordFinder {
             "candidates", "people", "environment", "new", "high", "best", "own", "need", "needs", "needed", "want",
             "wants", "get", "getting", "take", "part", "day", "time", "ensure", "provide", "support", "supports",
             "related", "relevant", "similar", "based", "across", "world", "global", "mission", "values", "culture",
-            "free", "full", "remote", "hybrid", "onsite", "location", "locations", "employment", "status"));
+            "free", "full", "remote", "hybrid", "onsite", "location", "locations", "employment", "status",
+            "senior", "junior", "lead", "principal", "staff", "head", "manager", "director", "associate", "intern",
+            "engineer", "engineers", "engineering", "developer", "developers", "analyst", "specialist", "consultant",
+            "solutions", "solution", "targets", "target", "customers", "customer", "client", "clients", "scaling",
+            "scale", "operating", "operations", "operational", "growth", "management", "manage", "managing",
+            "revenue", "business", "businesses", "product", "products", "service", "services", "market", "markets",
+            "industry", "organization", "organizations", "stakeholders", "stakeholder", "partners", "partner",
+            "partnerships", "strategy", "strategic", "drive", "driving", "deliver", "delivery", "leading",
+            "leadership", "responsible", "impact", "key", "projects", "project", "process", "processes",
+            "tools", "tool", "platform", "systems", "system", "data", "sales", "growing", "grow",
+            "opportunities", "challenges", "problems", "solve", "solving", "improve", "improving", "create",
+            "creating", "inclusive", "diverse", "diversity", "passion", "passionate", "ideal",
+            "successful", "success", "goals", "goal", "level", "levels", "cross", "functional", "collaborate",
+            "collaboration", "communication", "communicate", "excited", "seeking", "offer", "offers", "today",
+            "future", "approach", "approaches", "quality", "performance", "ownership",
+            "career", "careers", "life", "employees", "employee", "office", "offices", "pay", "compensation",
+            "range", "ranges", "eligible", "eligibility", "authorization", "authorized", "visa", "sponsorship",
+            "disability", "veteran", "gender", "race", "religion", "orientation", "accommodation", "accommodations"));
 
     private KeywordFinder() {
     }
 
     /** Up to max keywords that occur at least twice in the job text and not at all in the resume text. */
     static List<String> missing(String jobText, String resumeText, Predicate<String> isSkillWord, int max) {
+        return missing(jobText, resumeText, isSkillWord, max, null);
+    }
+
+    /** As above, never returning a word of {@code excludedText} (the job title and company name). */
+    static List<String> missing(String jobText, String resumeText, Predicate<String> isSkillWord, int max,
+            String excludedText) {
         if (jobText == null || jobText.isBlank()) {
             return List.of();
         }
@@ -50,12 +73,16 @@ final class KeywordFinder {
         for (String word : words(resumeText)) {
             resumeKeys.add(key(word));
         }
+        Set<String> excludedKeys = new HashSet<>();
+        for (String word : words(excludedText)) {
+            excludedKeys.add(key(word));
+        }
         Map<String, Integer> counts = new LinkedHashMap<>();
         Map<String, String> display = new LinkedHashMap<>();
         for (String word : words(jobText)) {
             String key = key(word);
             if (STOP_WORDS.contains(word) || STOP_WORDS.contains(key) || isSkillWord.test(word)
-                    || isSkillWord.test(key) || resumeKeys.contains(key)) {
+                    || isSkillWord.test(key) || resumeKeys.contains(key) || excludedKeys.contains(key)) {
                 continue;
             }
             counts.merge(key, 1, Integer::sum);

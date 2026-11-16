@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.careercopilot.jobs.Company;
+import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
 import com.careercopilot.jobs.JobLocation;
 import com.careercopilot.jobs.JobLocationRepository;
@@ -46,12 +48,16 @@ class MatchServiceTest {
     @Mock
     private JobLocationRepository locations;
 
+    @Mock
+    private CompanyRepository companies;
+
     private MatchService service;
     private Profile profile;
 
     @BeforeEach
     void setUp() {
-        service = new MatchService(profiles, jobs, resumes, matches, locations, new SkillExtractor());
+        service = new MatchService(profiles, jobs, resumes, matches, locations, new SkillExtractor(), companies,
+                new MatchWriter(matches));
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
     }
@@ -77,7 +83,7 @@ class MatchServiceTest {
         lenient().when(resumes.findByProfileIdAndIsBaseTrue(10L)).thenReturn(Optional.of(resume));
         lenient().when(locations.findByJobIdIn(any(Collection.class))).thenReturn(List.of());
         lenient().when(matches.findByProfileIdAndJobId(10L, job.getId())).thenReturn(Optional.empty());
-        lenient().when(matches.save(any(JobMatch.class))).thenAnswer(inv -> {
+        lenient().when(matches.saveAndFlush(any(JobMatch.class))).thenAnswer(inv -> {
             JobMatch saved = inv.getArgument(0);
             ReflectionTestUtils.setField(saved, "createdAt", java.time.Instant.parse("2026-11-15T10:00:00Z"));
             return saved;
@@ -221,7 +227,7 @@ class MatchServiceTest {
         verify(matches).delete(old);
         verify(matches).flush();
         ArgumentCaptor<JobMatch> captor = ArgumentCaptor.forClass(JobMatch.class);
-        verify(matches).save(captor.capture());
+        verify(matches).saveAndFlush(captor.capture());
         JobMatch row = captor.getValue();
         assertThat(row.getProfileId()).isEqualTo(10L);
         assertThat(row.getJobId()).isEqualTo(7L);
@@ -383,5 +389,57 @@ class MatchServiceTest {
         assertThat(analysis.suggestedHeadline()).isEqualTo("Backend Engineer");
         verify(matches, never()).save(any(JobMatch.class));
         verify(matches, never()).delete(any(JobMatch.class));
+    }
+
+    @Test
+    void aJobWithNoRecognisedSkillsCarriesAnExplanatoryNote() {
+        Job job = job(7L, "Chef", "Cook meals for guests", null);
+        stubHappyPath(job, resume("text", "[\"Java\"]"));
+
+        MatchResponse result = service.matchJob(1L, 7L);
+
+        assertThat(result.note()).isEqualTo(
+                "No known skills were found in this job description, so the score cannot be calculated.");
+    }
+
+    @Test
+    void aJobWithSkillsHasNoNote() {
+        Job job = job(7L, "Dev", "Python and Redis", null);
+        stubHappyPath(job, resume("text", "[\"Python\"]"));
+
+        assertThat(service.matchJob(1L, 7L).note()).isNull();
+    }
+
+    @Test
+    void theCompanyNameIsNotASkillAndNotAKeyword() {
+        Job job = job(7L, "Backend Engineer", "Stripe builds payments. Stripe uses Java. ledger ledger", null);
+        job.setCompanyId(4L);
+        stubHappyPath(job, resume("text", "[\"Java\"]"));
+        when(companies.findById(4L)).thenReturn(Optional.of(new Company("Stripe")));
+
+        MatchResponse result = service.matchJob(1L, 7L);
+
+        assertThat(result.matchedSkills()).containsExactly("Java");
+        assertThat(result.missingSkills()).isEmpty();
+        assertThat(result.score()).isEqualTo(100);
+        assertThat(result.missingKeywords()).doesNotContain("stripe");
+    }
+
+    @Test
+    void aLostRaceOnTheUniqueRowUpdatesTheOtherRequestsRow() {
+        Job job = job(7L, "Dev", "Python and Redis", null);
+        stubHappyPath(job, resume("text", "[\"Python\"]"));
+        JobMatch existing = new JobMatch(10L, 7L);
+        when(matches.saveAndFlush(any(JobMatch.class)))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("uq"))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(matches.findByProfileIdAndJobId(10L, 7L)).thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existing));
+
+        MatchResponse result = service.matchJob(1L, 7L);
+
+        assertThat(result.score()).isEqualTo(50);
+        assertThat(existing.getScore()).isEqualTo(50);
+        assertThat(existing.getMatchedSkills()).contains("Python");
     }
 }

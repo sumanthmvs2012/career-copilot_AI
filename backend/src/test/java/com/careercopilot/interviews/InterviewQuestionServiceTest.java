@@ -59,7 +59,8 @@ class InterviewQuestionServiceTest {
     @BeforeEach
     void setUp() {
         service = new InterviewQuestionService(profiles, jobs, companies, resumes, questions,
-                new InterviewQuestionGenerator(), matchService, new SkillExtractor());
+                new InterviewQuestionGenerator(), matchService, new SkillExtractor(),
+                new InterviewQuestionWriter(questions));
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
         job = new Job("greenhouse", "Backend Engineer", "We use Java and Docker.");
@@ -169,5 +170,31 @@ class InterviewQuestionServiceTest {
         assertThatThrownBy(() -> service.regenerate(1L, 3L)).isInstanceOf(JobNotFoundException.class);
         verify(questions, never()).saveAll(any());
         verify(questions, never()).deleteByProfileIdAndJobId(any(), any());
+    }
+
+    @Test
+    void aLostRaceReturnsTheListTheOtherRequestStored() {
+        stubAccess();
+        InterviewQuestion stored = new InterviewQuestion(10L, 3L, "Stored question?", "role", 0);
+        ReflectionTestUtils.setField(stored, "id", 99L);
+        when(questions.findByProfileIdAndJobIdOrderByPositionAscIdAsc(10L, 3L))
+                .thenReturn(List.of()).thenReturn(List.of(stored));
+        when(resumes.findByProfileIdAndIsBaseTrue(10L)).thenReturn(Optional.empty());
+        when(questions.saveAll(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException("uq"));
+
+        InterviewQuestionsResponse response = service.get(1L, 3L);
+
+        assertThat(response.questions()).singleElement().satisfies(q -> assertThat(q.id()).isEqualTo(99L));
+    }
+
+    @Test
+    void aConflictWithNothingStoredIsRethrown() {
+        stubAccess();
+        when(questions.findByProfileIdAndJobIdOrderByPositionAscIdAsc(10L, 3L)).thenReturn(List.of());
+        when(resumes.findByProfileIdAndIsBaseTrue(10L)).thenReturn(Optional.empty());
+        when(questions.saveAll(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException("uq"));
+
+        assertThatThrownBy(() -> service.get(1L, 3L))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 }
