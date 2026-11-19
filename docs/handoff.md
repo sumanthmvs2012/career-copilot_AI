@@ -187,3 +187,11 @@ Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails wit
 - Dev Postgres: V12 (`resumes.embedding`, `jobs.embedding`, HNSW index; in `db/migration-pg`) and V13 (`job_matches.score_source`) applied. I checked with curl, no AI keys: sign-up, profile, PDF upload (skills extracted), pasted job match: score 50, `scoreSource: "keywords"`. Upload and match work unchanged without keys.
 - Not run yet: a live Voyage or Anthropic call (no keys in `backend/.env`). `AnthropicLlmClient` is not used by any feature. The frontend does not show `scoreSource` (the semantic-only note arrives through the existing `note`).
 - Known gaps: a job's embedding is not refreshed when the scraper updates its description, and the daily AI limit is in memory, per instance.
+
+## Session 10b (2026-11-19): Claude writes interview questions, suggestions and tailoring
+- `AnthropicLlmClient` now uses the official Anthropic Java SDK 3.10.0 (it replaces the earlier hand-written HTTP client) with structured outputs (records), model `claude-opus-5-5` (it was claude-sonnet-5-5; the Claude API skill default), effort medium, 16000 max tokens, 120s timeout, server-side refusal fallbacks on. The key goes in `x-api-key`: SDK 3.10 otherwise sends it as a Bearer token.
+- `LlmService` (best effort, daily limit, never throws), `interviews/ClaudeInterviewQuestions`, `resumes/ClaudeResumeAdvisor` (suggestions + tailoring). Each falls back to the rule-based result. API shapes unchanged; the logs say which source was used ("claude" / "rules").
+- `InterviewQuestionService.regenerate`, `ResumeTailorService.tailor` and `suggest` no longer hold a DB transaction during the Claude call.
+- Tests: 765 backend tests pass (`mvn clean package`). New: `LlmServiceTest`, `ClaudeInterviewQuestionsTest`, `ClaudeResumeAdvisorTest`, `AnthropicLlmClientTest` (rewritten against a local fake Messages API), plus Claude-path cases in the service tests.
+- Not done: no real Anthropic call has been made (no key locally). The frontend does not say whether text came from Claude. Suggestions are not cached (each view is a Claude call, within the daily limit).
+- Note: VS Code's Java extension can write Eclipse-compiled classes into `backend/target`; if tests fail with "Unresolved compilation problems", run `mvn clean test`.

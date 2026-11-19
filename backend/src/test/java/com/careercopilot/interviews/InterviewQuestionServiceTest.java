@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.careercopilot.ai.AiTestSupport;
 import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
@@ -60,7 +61,8 @@ class InterviewQuestionServiceTest {
     void setUp() {
         service = new InterviewQuestionService(profiles, jobs, companies, resumes, questions,
                 new InterviewQuestionGenerator(), matchService, new SkillExtractor(),
-                new InterviewQuestionWriter(questions));
+                new InterviewQuestionWriter(questions),
+                new ClaudeInterviewQuestions(AiTestSupport.disabledLlm()), AiTestSupport.noTransactions());
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
         job = new Job("greenhouse", "Backend Engineer", "We use Java and Docker.");
@@ -196,5 +198,31 @@ class InterviewQuestionServiceTest {
 
         assertThatThrownBy(() -> service.get(1L, 3L))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void getUsesClaudesQuestionsAndTopsUpAShortListFromTheRules() {
+        stubAccess();
+        stubSaveAll();
+        when(questions.findByProfileIdAndJobIdOrderByPositionAscIdAsc(10L, 3L)).thenReturn(List.of());
+        Resume base = new Resume(10L, "k", "cv.pdf", "application/pdf", "Java developer");
+        when(resumes.findByProfileIdAndIsBaseTrue(10L)).thenReturn(Optional.of(base));
+        List<ClaudeInterviewQuestions.AiQuestion> twelve = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(i -> new ClaudeInterviewQuestions.AiQuestion("Claude question " + i + "?", "technical"))
+                .toList();
+        com.careercopilot.ai.FakeLlmClient client = com.careercopilot.ai.FakeLlmClient.replying(
+                new ClaudeInterviewQuestions.AiQuestionList(twelve));
+        InterviewQuestionService claude = new InterviewQuestionService(profiles, jobs, companies, resumes, questions,
+                new InterviewQuestionGenerator(), matchService, new SkillExtractor(),
+                new InterviewQuestionWriter(questions), new ClaudeInterviewQuestions(AiTestSupport.llm(client)),
+                AiTestSupport.noTransactions());
+
+        InterviewQuestionsResponse response = claude.get(1L, 3L);
+
+        assertThat(response.questions()).hasSize(20);
+        assertThat(response.questions().subList(0, 12)).extracting(InterviewQuestionsResponse.QuestionDto::question)
+                .allMatch(question -> question.startsWith("Claude question"));
+        // The resume text and the job post went to Claude inside data tags.
+        assertThat(client.users.get(0)).contains("<resume>\nJava developer\n</resume>").contains("<job_post>");
     }
 }

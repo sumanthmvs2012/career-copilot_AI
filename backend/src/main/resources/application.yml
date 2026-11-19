@@ -78,8 +78,11 @@ app:
     # All optional. Without a key the matching stays rule-based and no text leaves the system.
     # Keys come from the environment only; AiProperties never prints them.
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    anthropic-model: ${ANTHROPIC_MODEL:claude-sonnet-5-5}
-    anthropic-max-tokens: ${ANTHROPIC_MAX_TOKENS:1024}
+    anthropic-model: ${ANTHROPIC_MODEL:claude-opus-5-5}
+    anthropic-max-tokens: ${ANTHROPIC_MAX_TOKENS:16000}
+    anthropic-effort: ${ANTHROPIC_EFFORT:medium}
+    anthropic-fallbacks: ${ANTHROPIC_FALLBACKS:true}
+    anthropic-timeout: ${ANTHROPIC_TIMEOUT:PT120S}
     voyage-api-key: ${VOYAGE_API_KEY:}
     voyage-model: ${VOYAGE_MODEL:voyage-3.5-lite}
     daily-limit-per-user: ${AI_DAILY_LIMIT_PER_USER:50}

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.careercopilot.ai.AiTestSupport;
 import com.careercopilot.common.storage.StorageService;
 import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
@@ -60,7 +61,8 @@ class ResumeTailorServiceTest {
     @BeforeEach
     void setUp() {
         service = new ResumeTailorService(profiles, resumes, companies, matchService,
-                new ResumeSuggestionService(), storage);
+                new ResumeSuggestionService(), storage, new ClaudeResumeAdvisor(AiTestSupport.disabledLlm()),
+                AiTestSupport.noTransactions());
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
         job = new Job("greenhouse", "Platform Engineer", "Java and Docker");
@@ -214,5 +216,53 @@ class ResumeTailorServiceTest {
         assertThat(ResumeTailorService.fileName(odd, "A\\B")).isEqualTo("Tailored - Dev Ops Lead - A B.txt");
         Job longTitle = new Job("manual", "x".repeat(400), "d");
         assertThat(ResumeTailorService.fileName(longTitle, null)).hasSize(255).endsWith(".txt");
+    }
+
+    private ResumeTailorService withClaude(Object reply) {
+        return new ResumeTailorService(profiles, resumes, companies, matchService, new ResumeSuggestionService(),
+                storage, new ClaudeResumeAdvisor(AiTestSupport.llm(com.careercopilot.ai.FakeLlmClient.replying(reply))),
+                AiTestSupport.noTransactions());
+    }
+
+    @Test
+    void tailorUsesClaudesHeadlineAndSummaryButOnlySkillsTheResumeHas() {
+        stubHappyPath();
+        ResumeTailorService claude = withClaude(new ClaudeResumeAdvisor.AiTailoring("Senior Platform Engineer",
+                "Jane builds services in Java.", List.of("Java", "Kubernetes")));
+
+        TailoredResumeResponse response = claude.tailor(1L, 5L, 7L);
+
+        // Kubernetes is not in the resume, so it is dropped; the original text is kept unchanged at the end.
+        assertThat(response.parsedText()).isEqualTo("Senior Platform Engineer\nSummary: Jane builds services in Java."
+                + "\nRelevant skills: Java\n\nJane. I use Java.");
+    }
+
+    @Test
+    void tailorFallsBackToTheRulesWhenClaudeFails() {
+        stubHappyPath();
+        ResumeTailorService failing = new ResumeTailorService(profiles, resumes, companies, matchService,
+                new ResumeSuggestionService(), storage, new ClaudeResumeAdvisor(AiTestSupport.llm(
+                        com.careercopilot.ai.FakeLlmClient.failing(new com.careercopilot.ai.AiProviderException(
+                                "The AI provider request failed.", 529)))),
+                AiTestSupport.noTransactions());
+
+        TailoredResumeResponse response = failing.tailor(1L, 5L, 7L);
+
+        assertThat(response.parsedText()).isEqualTo("Platform Engineer\nRelevant skills: Java\n\nJane. I use Java.");
+    }
+
+    @Test
+    void suggestReturnsClaudesSuggestionsWhenAvailable() {
+        when(profiles.findByUserId(1L)).thenReturn(Optional.of(profile));
+        when(resumes.findByIdAndProfileId(5L, 10L)).thenReturn(Optional.of(original));
+        when(matchService.visibleJob(profile, 7L)).thenReturn(job);
+        when(matchService.analyze(profile, job, original)).thenReturn(analysis());
+        ResumeTailorService claude = withClaude(new ClaudeResumeAdvisor.AiSuggestionList(List.of(
+                new ClaudeResumeAdvisor.AiSuggestion("add_skill", "If you have used Docker, list it under Skills."))));
+
+        SuggestionsResponse response = claude.suggest(1L, 5L, 7L);
+
+        assertThat(response.suggestions()).containsExactly(
+                new SuggestionResponse("add_skill", "If you have used Docker, list it under Skills."));
     }
 }

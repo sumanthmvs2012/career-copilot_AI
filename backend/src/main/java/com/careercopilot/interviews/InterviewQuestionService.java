@@ -16,11 +16,13 @@ import com.careercopilot.resumes.Resume;
 import com.careercopilot.resumes.ResumeRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Questions are stored per profile and job, so repeat calls return the same list until it is regenerated. */
 @Service
@@ -37,11 +39,14 @@ public class InterviewQuestionService {
     private final MatchService matchService;
     private final SkillExtractor extractor;
     private final InterviewQuestionWriter writer;
+    private final ClaudeInterviewQuestions claude;
+    private final TransactionTemplate transactions;
 
     public InterviewQuestionService(ProfileRepository profiles, JobRepository jobs, CompanyRepository companies,
             ResumeRepository resumes, InterviewQuestionRepository questions, InterviewQuestionGenerator generator,
             MatchService matchService, SkillExtractor extractor,
-            InterviewQuestionWriter writer) {
+            InterviewQuestionWriter writer, ClaudeInterviewQuestions claude,
+            PlatformTransactionManager transactionManager) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.companies = companies;
@@ -51,6 +56,8 @@ public class InterviewQuestionService {
         this.matchService = matchService;
         this.extractor = extractor;
         this.writer = writer;
+        this.claude = claude;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     /** Not one big transaction: the list is written by InterviewQuestionWriter so a lost race can be handled. */
@@ -65,29 +72,48 @@ public class InterviewQuestionService {
         return respond(job, stored);
     }
 
-    /** Replaces the stored list with a fresh one built from the current resume and job. */
-    @Transactional
+    /**
+     * Replaces the stored list with a fresh one built from the current resume and job. The new list is generated
+     * first (a Claude call can take a while), then the delete and insert run in one short transaction.
+     */
     public InterviewQuestionsResponse regenerate(Long userId, Long jobId) {
         Profile profile = profiles.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
         Job job = matchService.visibleJob(profile, jobId);
-        questions.deleteByProfileIdAndJobId(profile.getId(), job.getId());
-        questions.flush();
-        return respond(job, generateAndStore(profile, job));
+        List<InterviewQuestion> rows = generate(profile, job);
+        List<InterviewQuestion> saved = transactions.execute(status -> {
+            questions.deleteByProfileIdAndJobId(profile.getId(), job.getId());
+            questions.flush();
+            return writer.saveAll(rows);
+        });
+        return respond(job, saved);
     }
 
-    private List<InterviewQuestion> generateAndStore(Profile profile, Job job) {
-        List<String> jobSkills = CompanySkills.exclude(jobSkills(job), companyName(job));
-        // Only the base resume's skills are read; its text is never touched here.
-        List<String> resumeSkills = resumes.findByProfileIdAndIsBaseTrue(profile.getId())
-                .map(this::resumeSkills).orElse(null);
-        List<Generated> generated = generator.generate(new InterviewQuestionGenerator.Input(job.getTitle(),
-                companyName(job), jobSkills, resumeSkills));
+    /** Claude's questions when available, else (or on any failure) the rule-based list. */
+    private List<InterviewQuestion> generate(Profile profile, Job job) {
+        String company = companyName(job);
+        List<String> jobSkills = CompanySkills.exclude(jobSkills(job), company);
+        Optional<Resume> base = resumes.findByProfileIdAndIsBaseTrue(profile.getId());
+        List<String> resumeSkills = base.map(this::resumeSkills).orElse(null);
+        InterviewQuestionGenerator.Input input = new InterviewQuestionGenerator.Input(job.getTitle(), company,
+                jobSkills, resumeSkills);
+        List<Generated> rules = generator.generate(input);
+        // Resume text only goes to Claude when a key is set; it is never logged.
+        List<Generated> generated = claude.generate(profile.getUserId(), input, job.getDescription(),
+                base.map(Resume::getParsedText).orElse(null), rules).orElse(rules);
+        String source = generated == rules ? "rules" : "claude";
 
         List<InterviewQuestion> rows = new ArrayList<>();
         for (int i = 0; i < generated.size(); i++) {
             rows.add(new InterviewQuestion(profile.getId(), job.getId(), generated.get(i).question(),
                     generated.get(i).category(), i));
         }
+        log.info("Interview questions generated for profile {} and job {}: {} questions ({})", profile.getId(),
+                job.getId(), rows.size(), source);
+        return rows;
+    }
+
+    private List<InterviewQuestion> generateAndStore(Profile profile, Job job) {
+        List<InterviewQuestion> rows = generate(profile, job);
         List<InterviewQuestion> saved;
         try {
             saved = writer.saveAll(rows);
@@ -100,8 +126,6 @@ public class InterviewQuestionService {
             }
             return existing;
         }
-        log.info("Interview questions generated for profile {} and job {}: {} questions", profile.getId(),
-                job.getId(), saved.size());
         return saved;
     }
 

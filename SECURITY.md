@@ -16,4 +16,5 @@ AI providers (2026-11-19):
 - Resume and job text is sent to Voyage AI (embeddings) only when VOYAGE_API_KEY is set, and to Anthropic only when ANTHROPIC_API_KEY is set. Without keys nothing leaves the system.
 - API keys come from environment variables only, are never logged or returned, and provider errors reach the client as fixed messages.
 - Texts, prompts, vectors and provider responses are never logged; only exception class names and HTTP status codes are.
-- Each user is capped at AI_DAILY_LIMIT_PER_USER provider calls per day.
+- Each user is capped at AI_DAILY_LIMIT_PER_USER provider calls per day (embeddings and Claude together).
+- Job posts and resume text are untrusted: prompts wrap them in data tags and tell Claude to ignore instructions inside them. Claude's output is checked before use. Tailoring keeps only skills found in the resume and never edits the original text.

@@ -8,8 +8,15 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties("app.ai")
 public record AiProperties(
         @DefaultValue("") String anthropicApiKey,
-        @DefaultValue("claude-sonnet-5-5") String anthropicModel,
-        @DefaultValue("1024") int anthropicMaxTokens,
+        @DefaultValue("claude-opus-5-5") String anthropicModel,
+        // Thinking tokens count toward max_tokens, so this leaves room for the reasoning plus the JSON answer.
+        @DefaultValue("16000") int anthropicMaxTokens,
+        // low, medium, high, xhigh or max. Claude Opus 5.5 defaults to medium; it is set explicitly on every call.
+        @DefaultValue("medium") String anthropicEffort,
+        // Lets the API retry a refused request on another model (beta server-side fallbacks).
+        @DefaultValue("true") boolean anthropicFallbacks,
+        // Claude replies with reasoning can take far longer than an embedding call.
+        @DefaultValue("PT120S") Duration anthropicTimeout,
         @DefaultValue("") String voyageApiKey,
         @DefaultValue("voyage-3.5-lite") String voyageModel,
         @DefaultValue("50") int dailyLimitPerUser,
@@ -30,6 +37,7 @@ public record AiProperties(
     @Override
     public String toString() {
         return "AiProperties[llmConfigured=" + llmConfigured() + ", embeddingConfigured=" + embeddingConfigured()
-                + ", dailyLimitPerUser=" + dailyLimitPerUser + ", maxInputChars=" + maxInputChars + "]";
+                + ", model=" + anthropicModel + ", dailyLimitPerUser=" + dailyLimitPerUser
+                + ", maxInputChars=" + maxInputChars + "]";
     }
 }

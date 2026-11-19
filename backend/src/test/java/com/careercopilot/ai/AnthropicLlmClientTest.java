@@ -2,139 +2,151 @@ package com.careercopilot.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
+/** The SDK-based client against a local fake of the Messages API (no network, no real key). */
 class AnthropicLlmClientTest {
 
-    private static final String REPLY = """
-            {"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-5-5",
-             "content":[{"type":"text","text":"Hello "},{"type":"text","text":"there"}],"stop_reason":"end_turn"}
-            """;
+    record Answer(String value) {
+    }
 
-    private MockRestServiceServer server;
-    private AnthropicLlmClient client;
+    /** Shaped like a real API key; the SDK sends such keys as x-api-key. */
+    private static final String API_KEY = "sk-ant-api03-test-secret-key";
+
+    private final JsonMapper mapper = JsonMapper.builder().build();
+    private HttpServer server;
+    private final List<String> bodies = new ArrayList<>();
+    private final Map<String, String> headers = new ConcurrentHashMap<>();
+    private final AtomicInteger hits = new AtomicInteger();
+    private volatile int status = 200;
+    private volatile String reply = message("end_turn", "{\"value\":\"hello\"}");
+
+    private static String message(String stopReason, String text) {
+        String escaped = text.replace("\\", "\\\\").replace("\"", "\\\"");
+        return "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\","
+                + "\"content\":[{\"type\":\"text\",\"text\":\"" + escaped + "\"}],"
+                + "\"stop_reason\":\"" + stopReason + "\",\"stop_sequence\":null,"
+                + "\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}";
+    }
 
     @BeforeEach
-    void setUp() {
-        RestClient.Builder builder = RestClient.builder();
-        server = MockRestServiceServer.bindTo(builder).build();
-        client = new AnthropicLlmClient(AiTestSupport.properties(), builder, Duration.ZERO);
+    void start() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/messages", exchange -> {
+            hits.incrementAndGet();
+            bodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getRequestHeaders().forEach((name, values) -> headers.put(name.toLowerCase(), String.join(",", values)));
+            byte[] out = (status == 200 ? reply : "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
+                    + "\"message\":\"bad\"}}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, out.length);
+            try (OutputStream body = exchange.getResponseBody()) {
+                body.write(out);
+            }
+        });
+        server.start();
+    }
+
+    @AfterEach
+    void stop() {
+        server.stop(0);
+    }
+
+    private AnthropicLlmClient client(boolean fallbacks) {
+        AiProperties properties = new AiProperties(API_KEY, "claude-opus-5-5", 16000, "medium",
+                fallbacks, Duration.ofSeconds(10), "", "voyage-3.5-lite", 50, 20000, Duration.ofSeconds(5), 0.3, 0.8);
+        return new AnthropicLlmClient(properties, "http://127.0.0.1:" + server.getAddress().getPort());
     }
 
     @Test
-    void sendsTheMessagesRequestWithKeyAndVersionHeaders() {
-        server.expect(requestTo(AnthropicLlmClient.URL))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(header("x-api-key", AiTestSupport.LLM_KEY))
-                .andExpect(header("anthropic-version", "2023-06-01"))
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.model").value("claude-sonnet-5-5"))
-                .andExpect(jsonPath("$.max_tokens").value(300))
-                .andExpect(jsonPath("$.system").value("Be brief."))
-                .andExpect(jsonPath("$.messages[0].role").value("user"))
-                .andExpect(jsonPath("$.messages[0].content").value("Say hi"))
-                .andRespond(withSuccess(REPLY, MediaType.APPLICATION_JSON));
+    void sendsAStructuredRequestAndParsesTheReply() {
+        Answer answer = client(true).completeStructured("Be brief.", "Say hello.", Answer.class, 0);
 
-        assertThat(client.complete("Be brief.", "Say hi", 300)).isEqualTo("Hello there");
-        server.verify();
+        assertThat(answer).isEqualTo(new Answer("hello"));
+        JsonNode request = mapper.readTree(bodies.get(0));
+        assertThat(request.path("model").asString()).isEqualTo("claude-opus-5-5");
+        assertThat(request.path("max_tokens").asInt()).isEqualTo(16000);
+        assertThat(request.path("output_config").path("effort").asString()).isEqualTo("medium");
+        assertThat(request.path("output_config").path("format").path("type").asString()).isEqualTo("json_schema");
+        assertThat(request.path("output_config").path("format").path("schema").path("properties").has("value")).isTrue();
+        assertThat(request.path("system").asString()).isEqualTo("Be brief.");
+        assertThat(request.path("messages").get(0).path("content").asString()).isEqualTo("Say hello.");
+        assertThat(request.has("thinking")).isFalse();
+        assertThat(request.path("fallbacks").asString()).isEqualTo("default");
+        assertThat(headers.get("anthropic-beta")).contains(AnthropicLlmClient.FALLBACK_BETA);
+        assertThat(headers.get("x-api-key")).isEqualTo(API_KEY);
+        assertThat(headers).doesNotContainKey("authorization");
     }
 
     @Test
-    void usesTheConfiguredMaxTokensWhenNoneIsGivenAndOmitsABlankSystemPrompt() {
-        server.expect(requestTo(AnthropicLlmClient.URL))
-                .andExpect(jsonPath("$.max_tokens").value(1024))
-                .andExpect(jsonPath("$.system").doesNotExist())
-                .andRespond(withSuccess(REPLY, MediaType.APPLICATION_JSON));
+    void fallbacksCanBeSwitchedOff() {
+        client(false).completeStructured("s", "u", Answer.class, 500);
 
-        client.complete(" ", "Say hi", 0);
-        server.verify();
+        JsonNode request = mapper.readTree(bodies.get(0));
+        assertThat(request.has("fallbacks")).isFalse();
+        assertThat(request.path("max_tokens").asInt()).isEqualTo(500);
+        assertThat(headers.getOrDefault("anthropic-beta", "")).doesNotContain(AnthropicLlmClient.FALLBACK_BETA);
     }
 
     @Test
-    void truncatesLongInputToTheConfiguredLimit() {
-        RestClient.Builder builder = RestClient.builder();
-        MockRestServiceServer small = MockRestServiceServer.bindTo(builder).build();
-        AnthropicLlmClient limited = new AnthropicLlmClient(AiTestSupport.properties(5), builder, Duration.ZERO);
-        small.expect(requestTo(AnthropicLlmClient.URL))
-                .andExpect(jsonPath("$.messages[0].content").value("abcde"))
-                .andRespond(withSuccess(REPLY, MediaType.APPLICATION_JSON));
+    void aRefusalIsNotUsed() {
+        reply = message("refusal", "");
 
-        limited.complete(null, "abcdefghij", 10);
-        small.verify();
-    }
-
-    @Test
-    void retriesOnceOnRateLimitThenSucceeds() {
-        server.expect(requestTo(AnthropicLlmClient.URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
-        server.expect(requestTo(AnthropicLlmClient.URL)).andRespond(withSuccess(REPLY, MediaType.APPLICATION_JSON));
-
-        assertThat(client.complete("s", "u", 10)).isEqualTo("Hello there");
-        server.verify();
-    }
-
-    @Test
-    void givesUpAfterOneRetryWithAFixedMessageThatHasNoKeyOrPrompt() {
-        server.expect(requestTo(AnthropicLlmClient.URL))
-                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE).body("prompt echo"));
-        server.expect(requestTo(AnthropicLlmClient.URL))
-                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE).body("prompt echo"));
-
-        assertThatThrownBy(() -> client.complete("s", "my resume text", 10))
-                .isInstanceOfSatisfying(AiProviderException.class, e -> {
-                    assertThat(e.status()).isEqualTo(503);
-                    assertThat(e.getMessage()).isEqualTo("The AI provider request failed.")
-                            .doesNotContain(AiTestSupport.LLM_KEY).doesNotContain("resume");
-                    assertThat(e.getCause()).isNull();
-                });
-        server.verify();
-    }
-
-    @Test
-    void doesNotRetryOtherClientErrors() {
-        server.expect(requestTo(AnthropicLlmClient.URL)).andRespond(withStatus(HttpStatus.UNAUTHORIZED));
-
-        assertThatThrownBy(() -> client.complete("s", "u", 10))
-                .isInstanceOfSatisfying(AiProviderException.class, e -> assertThat(e.status()).isEqualTo(401));
-        server.verify();
-    }
-
-    @Test
-    void anUnexpectedReplyBecomesAFixedMessage() {
-        server.expect(requestTo(AnthropicLlmClient.URL))
-                .andRespond(withSuccess("{\"content\":[]}", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(() -> client.complete("s", "u", 10))
+        assertThatThrownBy(() -> client(true).completeStructured("s", "u", Answer.class, 0))
                 .isInstanceOf(AiProviderException.class)
-                .hasMessage("The AI provider returned an unexpected response.");
+                .hasMessage("The AI provider did not return a usable answer.");
     }
 
     @Test
-    void aReplyThatIsNotJsonBecomesAFixedMessage() {
-        server.expect(requestTo(AnthropicLlmClient.URL)).andRespond(withSuccess("not json", MediaType.TEXT_PLAIN));
+    void aCutOffReplyIsNotUsed() {
+        reply = message("max_tokens", "{\"value\":\"hel");
 
-        assertThatThrownBy(() -> client.complete("s", "u", 10)).isInstanceOf(AiProviderException.class);
+        assertThatThrownBy(() -> client(true).completeStructured("s", "u", Answer.class, 0))
+                .isInstanceOf(AiProviderException.class)
+                .hasMessage("The AI provider did not return a usable answer.");
+    }
+
+    @Test
+    void anErrorStatusBecomesAFixedMessageWithoutTheKey() {
+        status = 400;
+
+        assertThatThrownBy(() -> client(true).completeStructured("s", "u", Answer.class, 0))
+                .isInstanceOf(AiProviderException.class)
+                .hasMessage("The AI provider request failed.")
+                .satisfies(e -> assertThat(((AiProviderException) e).status()).isEqualTo(400))
+                .satisfies(e -> assertThat(e.toString()).doesNotContain(API_KEY));
+        // 400 is not retried.
+        assertThat(hits.get()).isEqualTo(1);
+    }
+
+    @Test
+    void anUnreachableServerBecomesAFixedMessage() {
+        AnthropicLlmClient client = client(true);
+        server.stop(0);
+
+        assertThatThrownBy(() -> client.completeStructured("s", "u", Answer.class, 0))
+                .isInstanceOf(AiProviderException.class)
+                .hasMessage("The AI provider could not be reached.");
     }
 
     @Test
     void toStringNeverShowsTheKey() {
-        assertThat(client.toString()).doesNotContain(AiTestSupport.LLM_KEY).contains("claude-sonnet-5-5");
-        assertThat(AiTestSupport.properties().toString())
-                .doesNotContain(AiTestSupport.LLM_KEY).doesNotContain(AiTestSupport.VOYAGE_KEY)
-                .contains("llmConfigured=true");
+        assertThat(client(true).toString()).doesNotContain(API_KEY).contains("claude-opus-5-5");
     }
 }

@@ -140,7 +140,8 @@ class EmbeddingServiceTest {
 
     @Test
     void aDegenerateRangeDoesNotDivideByZero() {
-        AiProperties flat = new AiProperties("", "m", 1, "k", "v", 5, 100, Duration.ofSeconds(1), 0.5, 0.5);
+        AiProperties flat = new AiProperties("", "m", 1, "low", false, Duration.ofSeconds(1), "k", "v", 5, 100,
+                Duration.ofSeconds(1), 0.5, 0.5);
         EmbeddingService service = new EmbeddingService(AiAvailability.disabled(), store,
                 new AiUsageLimiter(5, Clock.systemUTC()), flat);
 

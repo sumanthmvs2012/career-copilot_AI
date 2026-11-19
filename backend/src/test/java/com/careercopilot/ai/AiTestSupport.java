@@ -16,8 +16,23 @@ public final class AiTestSupport {
     }
 
     public static AiProperties properties(int maxInputChars) {
-        return new AiProperties(LLM_KEY, "claude-sonnet-5-5", 1024, VOYAGE_KEY, "voyage-3.5-lite", 50, maxInputChars,
-                Duration.ofSeconds(5), 0.3, 0.8);
+        return new AiProperties(LLM_KEY, "claude-opus-5-5", 16000, "medium", true, Duration.ofSeconds(5), VOYAGE_KEY,
+                "voyage-3.5-lite", 50, maxInputChars, Duration.ofSeconds(5), 0.3, 0.8);
+    }
+
+    /** Claude switched off (no key): every feature uses its rule-based result. */
+    public static LlmService disabledLlm() {
+        return new LlmService(AiAvailability.disabled(), new AiUsageLimiter(properties()));
+    }
+
+    /** Claude switched on, answered by the given client. */
+    public static LlmService llm(LlmClient client) {
+        return new LlmService(new AiAvailability(client, null), new AiUsageLimiter(properties()));
+    }
+
+    /** A transaction manager that does nothing, for unit tests of services that use TransactionTemplate. */
+    public static org.springframework.transaction.PlatformTransactionManager noTransactions() {
+        return org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
     }
 
     /** A 1024-dimension vector whose first value is the given one and the rest are zero. */
