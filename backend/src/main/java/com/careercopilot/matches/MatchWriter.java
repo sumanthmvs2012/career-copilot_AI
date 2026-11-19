@@ -40,6 +40,7 @@ public class MatchWriter {
         existing.setNearMatchedSkills(row.getNearMatchedSkills());
         existing.setMissingKeywords(row.getMissingKeywords());
         existing.setSuggestedHeadline(row.getSuggestedHeadline());
+        existing.setScoreSource(row.getScoreSource());
         existing.setLocationFitStatus(row.getLocationFitStatus());
         existing.setLocationFitNote(row.getLocationFitNote());
         return matches.saveAndFlush(existing);

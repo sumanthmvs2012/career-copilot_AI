@@ -1,5 +1,6 @@
 package com.careercopilot.resumes;
 
+import com.careercopilot.ai.EmbeddingService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -25,17 +26,24 @@ public class ResumeController {
     private final ResumeService resumeService;
     private final ResumeTailorService tailorService;
     private final ResumeJobLabels labels;
+    private final EmbeddingService embeddings;
 
-    public ResumeController(ResumeService resumeService, ResumeTailorService tailorService, ResumeJobLabels labels) {
+    public ResumeController(ResumeService resumeService, ResumeTailorService tailorService, ResumeJobLabels labels,
+            EmbeddingService embeddings) {
         this.resumeService = resumeService;
         this.tailorService = tailorService;
         this.labels = labels;
+        this.embeddings = embeddings;
     }
 
     @PostMapping(consumes = "multipart/form-data")
     @ResponseStatus(HttpStatus.CREATED)
     public ResumeResponse upload(@AuthenticationPrincipal Jwt jwt, @RequestParam("file") MultipartFile file) {
-        return ResumeResponse.from(resumeService.upload(userId(jwt), file));
+        Long userId = userId(jwt);
+        Resume saved = resumeService.upload(userId, file);
+        // After the upload transaction has committed. Best effort: a failure here never fails the upload.
+        embeddings.embedResume(userId, saved.getId(), saved.getParsedText());
+        return ResumeResponse.from(saved);
     }
 
     @GetMapping

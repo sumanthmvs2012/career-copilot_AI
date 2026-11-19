@@ -179,3 +179,11 @@ Run frontend tests from PowerShell (`npm test`); under Git Bash vitest fails wit
 - 404s: tailor/suggestions already returned "Resume not found." vs "Job not found."; documented in ARCHITECTURE.md so the frontend can branch on the message.
 - Constructor changes: `MatchService` (+CompanyRepository, MatchWriter), `InterviewQuestionService` (+InterviewQuestionWriter), `MatchResponse` (+note). Tests: 703 backend tests pass.
 
+
+
+## Session 10 (2026-11-19): AI layer (embeddings) finished
+- I found the `ai/` module unfinished in the working tree and fixed it: a broken string literal in `MatchService` and a test calling a package-private constructor. It now compiles and all 743 backend tests pass (`mvn test`).
+- Added `JdbcEmbeddingStoreTest` (Testcontainers, `pgvector/pgvector:pg17`). It runs migrations V1-V13 on real PostgreSQL and checks the vector SQL (save, exists, cosine similarity). It is skipped when Docker is not running.
+- Dev Postgres: V12 (`resumes.embedding`, `jobs.embedding`, HNSW index; in `db/migration-pg`) and V13 (`job_matches.score_source`) applied. I checked with curl, no AI keys: sign-up, profile, PDF upload (skills extracted), pasted job match: score 50, `scoreSource: "keywords"`. Upload and match work unchanged without keys.
+- Not run yet: a live Voyage or Anthropic call (no keys in `backend/.env`). `AnthropicLlmClient` is not used by any feature. The frontend does not show `scoreSource` (the semantic-only note arrives through the existing `note`).
+- Known gaps: a job's embedding is not refreshed when the scraper updates its description, and the daily AI limit is in memory, per instance.

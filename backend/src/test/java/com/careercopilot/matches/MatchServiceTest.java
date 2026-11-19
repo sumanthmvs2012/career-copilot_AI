@@ -8,6 +8,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.careercopilot.ai.AiAvailability;
+import com.careercopilot.ai.AiTestSupport;
+import com.careercopilot.ai.AiUsageLimiter;
+import com.careercopilot.ai.EmbeddingService;
+import com.careercopilot.ai.FakeEmbeddingStore;
 import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
@@ -57,7 +62,9 @@ class MatchServiceTest {
     @BeforeEach
     void setUp() {
         service = new MatchService(profiles, jobs, resumes, matches, locations, new SkillExtractor(), companies,
-                new MatchWriter(matches));
+                new MatchWriter(matches), new EmbeddingService(AiAvailability.disabled(),
+                        new FakeEmbeddingStore(false), new AiUsageLimiter(AiTestSupport.properties()),
+                        AiTestSupport.properties()));
         profile = new Profile(1L);
         ReflectionTestUtils.setField(profile, "id", 10L);
     }

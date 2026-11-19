@@ -51,6 +51,9 @@ public class JobMatch {
     @Column(name = "location_fit_note", length = 300)
     private String locationFitNote;
 
+    @Column(name = "score_source", length = 30)
+    private String scoreSource = "keywords";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -160,6 +163,14 @@ public class JobMatch {
 
     public void setLocationFitNote(String locationFitNote) {
         this.locationFitNote = locationFitNote;
+    }
+
+    public String getScoreSource() {
+        return scoreSource;
+    }
+
+    public void setScoreSource(String scoreSource) {
+        this.scoreSource = scoreSource;
     }
 
     public Instant getCreatedAt() {

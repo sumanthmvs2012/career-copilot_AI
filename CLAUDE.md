@@ -23,8 +23,8 @@ Do not add features that are not in `PRD.md`, `docs/plan.md` or a user request. 
 
 - Frontend: React + Vite, react-router, Vitest + React Testing Library (`frontend/`).
 - Backend: Spring Boot 4.1 on Java 21, modular monolith by feature (`backend/src/main/java/com/careercopilot/{auth,profiles,resumes,jobs,matches,applications,interviews,mail,common}`), each module with controller, service, repository.
-- Database: PostgreSQL + pgvector (Docker, `backend/compose.yaml`), Flyway migrations V1 to V9 in `backend/src/main/resources/db/migration`. Tests run on H2 in PostgreSQL mode.
-- AI: no AI keys yet. Matching, tailoring, suggestions and interview questions are rule-based. Claude API and Voyage embeddings come later behind the same result shapes.
+- Database: PostgreSQL + pgvector (Docker, `backend/compose.yaml`), Flyway migrations V1 to V13 in `backend/src/main/resources/db/migration` (V12 pgvector in `db/migration-pg`, PostgreSQL only). Tests run on H2 in PostgreSQL mode.
+- AI: optional `ai/` module. With `VOYAGE_API_KEY` set, matching blends keyword and embedding (pgvector) scores. Without keys everything is rule-based. The Anthropic client exists but no feature uses it yet. No keys are set locally yet.
 
 ## Rules
 
@@ -53,4 +53,4 @@ Do not add features that are not in `PRD.md`, `docs/plan.md` or a user request. 
 
 ## Known gaps and next work (see `docs/handoff.md`)
 
-Claude + Voyage embeddings (Phase 5 migration, Testcontainers), GitHub Actions CI, the hourly draft agent, Ashby/Workable/SmartRecruiters job sources, Gmail live run (needs Google credentials), a unique index to stop duplicate interview-question lists.
+a live Voyage run (needs a key), using Claude for tailoring, suggestions and questions, Ashby/Workable/SmartRecruiters job sources, Gmail live run (needs Google credentials), a unique index to stop duplicate interview-question lists.

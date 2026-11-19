@@ -1,4 +1,7 @@
 spring:
+  flyway:
+    # H2 cannot run pgvector, so the PostgreSQL-only location is not used in tests.
+    locations: classpath:db/migration
   datasource:
     url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
     username: sa
@@ -18,6 +21,10 @@ app:
     boards: ""
   agent:
     enabled: false
+  ai:
+    # Tests never call Anthropic or Voyage, even if backend/.env has keys.
+    anthropic-api-key: ""
+    voyage-api-key: ""
   locations:
     reparse-on-startup: false
   mail:

@@ -54,7 +54,7 @@ Backend 669 tests, frontend 411 tests (36 files); lint and build clean. Not re-r
 
 ## Not done yet
 
-- Claude API and Voyage embeddings (and the pgvector migration with Testcontainers); matching, tailoring and questions are keyword and template based until then.
+- A live run with real Voyage and Anthropic keys. Embedding-based matching is built and tested but has only run with fakes. Tailoring, suggestions and questions are still template based (no Claude prompts yet).
 - The hourly agent that writes application drafts for new postings (match score 70 or more).
 - Real submission to employers (submit only records "applied" in the app; auto-submit exists in code only).
 - Gmail has never been run against real Google; it needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` and `MAIL_TOKEN_KEY`.
@@ -75,7 +75,7 @@ Backend 669 tests, frontend 411 tests (36 files); lint and build clean. Not re-r
 
 1. Browser-check the remaining screens and phone width.
 2. GitHub Actions CI.
-3. Claude API and embeddings (needs Anthropic and Voyage keys).
+3. Turn on embeddings with a Voyage key, then use Claude for tailoring, suggestions and questions.
 4. The hourly draft agent.
 5. Live Gmail run (needs Google credentials).
 6. Deployment and monitoring.

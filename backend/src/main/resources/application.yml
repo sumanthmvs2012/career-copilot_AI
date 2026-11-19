@@ -15,6 +15,8 @@ spring:
       ddl-auto: none
   flyway:
     enabled: true
+    # db/migration-pg holds PostgreSQL-only migrations (pgvector). Tests run on H2 and use db/migration only.
+    locations: classpath:db/migration,classpath:db/migration-pg
   servlet:
     multipart:
       max-file-size: 5MB
@@ -72,3 +74,17 @@ app:
     reminder-days: ${REMINDER_DAYS:7}
     reminders-enabled: ${REMINDERS_ENABLED:true}
     reminder-cron: ${REMINDER_CRON:0 30 * * * *}
+  ai:
+    # All optional. Without a key the matching stays rule-based and no text leaves the system.
+    # Keys come from the environment only; AiProperties never prints them.
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    anthropic-model: ${ANTHROPIC_MODEL:claude-sonnet-5-5}
+    anthropic-max-tokens: ${ANTHROPIC_MAX_TOKENS:1024}
+    voyage-api-key: ${VOYAGE_API_KEY:}
+    voyage-model: ${VOYAGE_MODEL:voyage-3.5-lite}
+    daily-limit-per-user: ${AI_DAILY_LIMIT_PER_USER:50}
+    max-input-chars: ${AI_MAX_INPUT_CHARS:20000}
+    timeout: ${AI_TIMEOUT:PT30S}
+    # Cosine similarity of text embeddings is typically 0.3 to 0.8; this range is mapped linearly to 0..100.
+    semantic-low: ${AI_SEMANTIC_LOW:0.3}
+    semantic-high: ${AI_SEMANTIC_HIGH:0.8}

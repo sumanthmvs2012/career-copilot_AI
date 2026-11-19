@@ -8,19 +8,19 @@ Part two: the columns => Users: id, email, password hash, created at, updated at
                          Profiles: id, user id, full name, headline, location, remote ok, auto submit enabled (default false), last agent run at (nullable; when the draft agent last ran for this profile; V10), created at, updated at.
                          Resumes: id, profile id, file path (storage key, never a URL), file name, content type, parsed text, is base, base resume id (nullable),
                                   created at, job id (nullable, set on tailored copies), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7).
-                                  The skills column may become jsonb, and embedding (vector 1024) is added, by the Phase 5 AI migration.
+                                  embedding (vector 1024, nullable, PostgreSQL only; V12; null = not embedded yet).
                          Companies: id, name, website, careers URL, ats type (greenhouse, lever, ashby, workable, smartrecruiters; null for a company typed in
                                     by a user on a pasted job), board token, created at.
                          Jobs: id, company id (nullable for pasted jobs), created by profile id (nullable; set only for source manual, so a pasted job is visible
                                only to the user who pasted it), source (greenhouse, lever, ashby, workable, smartrecruiters, manual), external id (null for manual),
                                title, description, location (raw text from the source), category (nullable; fixed list in ARCHITECTURE.md, indexed),
-                               remote type (remote, hybrid, onsite), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7; may become jsonb in Phase 5), source URL, embedding (vector 1024, Phase 5), posted at, scraped at, created at.
+                               remote type (remote, hybrid, onsite), skills (TEXT, nullable; JSON array of strings, null = not extracted yet; V7; may become jsonb in Phase 5), source URL, embedding (vector 1024, nullable, PostgreSQL only; V12, HNSW cosine index), posted at, scraped at, created at.
                          Job locations: id, job id (foreign key to jobs, deleted with the job), city, state, country (each nullable, but at least one is set;
                                         a job can have several rows; indexed by country, state, city and by job id).
 
 
 Part three: the columns => Job matches (V7): id, profile id (foreign key, deleted with the profile), job id (foreign key, deleted with the job),
-                                         resume id (nullable foreign key, cleared when the resume is deleted), score (INT, CHECK 0-100),
+                                         resume id (nullable foreign key, cleared when the resume is deleted), score (INT, CHECK 0-100), score source (VARCHAR 30, nullable; V13; keywords or keywords+embeddings, null = keywords),
                                          matched skills, missing skills, near matched skills, missing keywords (each TEXT holding JSON: arrays of strings,
                                          except near matched skills, an array of {jobSkill, resumeSkill}), suggested headline (VARCHAR 200, nullable),
                                          location fit status (VARCHAR 20, CHECK match, partial, mismatch, unknown; default unknown),
@@ -41,6 +41,7 @@ Part three: the columns => Job matches (V7): id, profile id (foreign key, delete
 
 Part four: the rules. Every table gets an id as its primary key, and foreign keys link the tables together.
          Emails are unique in users. Source plus external id is unique in jobs, so the hourly scraper never stores a posting twice.
-         Embeddings use the pgvector extension, sized for Voyage voyage-3.5-lite (1024 dimensions).
+         Embeddings use the pgvector extension, sized for Voyage voyage-3.5-lite (1024 dimensions). The pgvector migration (V12) lives in
+         db/migration-pg, which runs only on PostgreSQL. The H2 tests use db/migration only, so the embedding columns do not exist there.
          Email bodies and resume text are never copied into email logs. Refresh tokens are stored encrypted only.
          Schema changes are made with migrations, and each one is tested before it runs.

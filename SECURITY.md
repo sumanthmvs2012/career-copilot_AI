@@ -11,3 +11,9 @@ Decisions (2026-11-15):
 - Mailbox access uses OAuth with the smallest read-only scope. The refresh tokens are encrypted in the database, never logged, and the user can revoke them at any time. Email bodies are never logged.
 - Auto-submit is off by default and only the user can turn it on. Every submission, automatic or not, is logged against the application.
 - Resume files on local disk are for development only. Production uses private R2 storage with links that expire.
+
+AI providers (2026-11-19):
+- Resume and job text is sent to Voyage AI (embeddings) only when VOYAGE_API_KEY is set, and to Anthropic only when ANTHROPIC_API_KEY is set. Without keys nothing leaves the system.
+- API keys come from environment variables only, are never logged or returned, and provider errors reach the client as fixed messages.
+- Texts, prompts, vectors and provider responses are never logged; only exception class names and HTTP status codes are.
+- Each user is capped at AI_DAILY_LIMIT_PER_USER provider calls per day.

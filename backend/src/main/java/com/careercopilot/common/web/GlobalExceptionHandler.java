@@ -1,6 +1,8 @@
 package com.careercopilot.common.web;
 
 import com.careercopilot.agent.AgentNoResumeException;
+import com.careercopilot.ai.AiLimitReachedException;
+import com.careercopilot.ai.AiProviderException;
 import com.careercopilot.applications.ApplicationAlreadyExistsException;
 import com.careercopilot.applications.ApplicationNotDraftException;
 import com.careercopilot.applications.ApplicationNotFoundException;
@@ -163,6 +165,18 @@ public class GlobalExceptionHandler {
         log.warn("Mail provider call failed: {}", ex.getMessage());
         return respond(HttpStatus.BAD_GATEWAY,
                 new ErrorResponse(502, "Could not reach your mailbox. Try again later."));
+    }
+
+    @ExceptionHandler(AiLimitReachedException.class)
+    ResponseEntity<ErrorResponse> handleAiLimit(AiLimitReachedException ex) {
+        return respond(HttpStatus.TOO_MANY_REQUESTS, new ErrorResponse(429, "Daily AI limit reached."));
+    }
+
+    @ExceptionHandler(AiProviderException.class)
+    ResponseEntity<ErrorResponse> handleAiProvider(AiProviderException ex) {
+        // The message is ours and carries no provider details; only the status code is logged.
+        log.warn("AI provider call failed with status {}", ex.status());
+        return respond(HttpStatus.BAD_GATEWAY, new ErrorResponse(502, "The AI service is unavailable. Try again later."));
     }
 
     @ExceptionHandler(JobNotFoundException.class)

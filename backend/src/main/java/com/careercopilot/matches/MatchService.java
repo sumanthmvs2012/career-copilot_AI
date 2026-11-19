@@ -1,5 +1,6 @@
 package com.careercopilot.matches;
 
+import com.careercopilot.ai.EmbeddingService;
 import com.careercopilot.jobs.Company;
 import com.careercopilot.jobs.CompanyRepository;
 import com.careercopilot.jobs.Job;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MatchService {
 
     static final int MAX_KEYWORDS = 10;
+    static final double KEYWORD_WEIGHT = 0.5;
     /** Same title JobService gives a pasted job without one; it says nothing, so it is not a headline. */
     public static final String DEFAULT_TITLE = "Pasted job";
 
@@ -39,10 +41,11 @@ public class MatchService {
     private final SkillExtractor extractor;
     private final CompanyRepository companies;
     private final MatchWriter writer;
+    private final EmbeddingService embeddings;
 
     public MatchService(ProfileRepository profiles, JobRepository jobs, ResumeRepository resumes,
             JobMatchRepository matches, JobLocationRepository locations, SkillExtractor extractor,
-            CompanyRepository companies, MatchWriter writer) {
+            CompanyRepository companies, MatchWriter writer, EmbeddingService embeddings) {
         this.profiles = profiles;
         this.jobs = jobs;
         this.resumes = resumes;
@@ -51,6 +54,7 @@ public class MatchService {
         this.extractor = extractor;
         this.companies = companies;
         this.writer = writer;
+        this.embeddings = embeddings;
     }
 
     /** Not one big transaction: the row is written by MatchWriter so a lost race can be retried as an update. */
@@ -120,8 +124,37 @@ public class MatchService {
         return new MatchAnalysis(score, jobSkills, matched, missing, near, keywords, headline(job, profile), fit);
     }
 
+    /**
+     * The keyword analysis blended with semantic similarity when both embeddings are available: score = round(0.5 *
+     * keyword score + 0.5 * semantic score); a job with no recognised skills gets the semantic score alone. Any
+     * problem with embeddings leaves the keyword result untouched. Tailored copies are never embedded or blended.
+     * Only the user-facing match uses this; analyze() (agent, tailoring, suggestions) stays keyword-only so the
+     * background agent makes no provider calls.
+     */
+    private MatchAnalysis analyzeWithEmbeddings(Profile profile, Job job, Resume resume) {
+        MatchAnalysis keywordResult = analyze(profile, job, resume);
+        Integer semantic = resume.getBaseResumeId() == null ? semanticScore(profile, job, resume) : null;
+        if (semantic == null) {
+            return keywordResult;
+        }
+        int score = keywordResult.jobSkills().isEmpty() ? semantic
+                : (int) Math.round(KEYWORD_WEIGHT * keywordResult.score() + (1 - KEYWORD_WEIGHT) * semantic);
+        return new MatchAnalysis(score, keywordResult.jobSkills(), keywordResult.matchedSkills(),
+                keywordResult.missingSkills(), keywordResult.nearMatchedSkills(), keywordResult.missingKeywords(),
+                keywordResult.suggestedHeadline(), keywordResult.locationFit(), MatchAnalysis.SOURCE_EMBEDDINGS);
+    }
+
+    private Integer semanticScore(Profile profile, Job job, Resume resume) {
+        if (!embeddings.isActive()) {
+            return null;
+        }
+        embeddings.ensureResumeEmbedding(profile.getUserId(), resume.getId(), resume.getParsedText());
+        embeddings.ensureJobEmbedding(profile.getUserId(), job.getId(), job.getTitle() + "\n" + job.getDescription());
+        return embeddings.similarity(resume.getId(), job.getId()).map(embeddings::semanticScore).orElse(null);
+    }
+
     private MatchResponse compute(Profile profile, Job job, Resume resume) {
-        MatchAnalysis analysis = analyze(profile, job, resume);
+        MatchAnalysis analysis = analyzeWithEmbeddings(profile, job, resume);
         int score = analysis.score();
         LocationFit fit = analysis.locationFit();
         List<String> matched = analysis.matchedSkills();
@@ -132,6 +165,7 @@ public class MatchService {
         JobMatch row = new JobMatch(profile.getId(), job.getId());
         row.setResumeId(resume.getId());
         row.setScore(score);
+        row.setScoreSource(analysis.scoreSource());
         row.setMatchedSkills(SkillJson.write(matched));
         row.setMissingSkills(SkillJson.write(missing));
         row.setNearMatchedSkills(SkillJson.write(near));
@@ -147,8 +181,8 @@ public class MatchService {
             saved = writer.overwrite(row);
         }
 
-        log.info("Match computed for profile {} and job {}: score {}, {} job skills", profile.getId(), job.getId(),
-                score, analysis.jobSkills().size());
+        log.info("Match computed for profile {} and job {}: score {} ({}), {} job skills", profile.getId(),
+                job.getId(), score, analysis.scoreSource(), analysis.jobSkills().size());
         return MatchResponse.from(saved);
     }
 
